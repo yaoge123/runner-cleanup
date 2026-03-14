@@ -3,6 +3,12 @@
 IFS=$'\n\t'
 set -euo pipefail
 
+SCRIPT_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
+
+# shellcheck disable=SC1091
+. "${SCRIPT_DIR}/load-config.sh"
+load_runner_cleanup_config "${SCRIPT_DIR}"
+
 RUNNER_CACHE_DIR=${RUNNER_CACHE_DIR:-/cache}
 DRY_RUN=${DRY_RUN:-1}
 VERBOSE=${VERBOSE:-1}

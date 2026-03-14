@@ -22,6 +22,7 @@ The local cache cleanup script treats data in three classes:
 - `clean.sh`: old Docker image cleanup.
 - `clear-docker-cache.sh`: runner-managed Docker container and volume cleanup.
 - `clear-runner-local-cache.sh`: host-based runner local cache scan and cleanup.
+- `runner-cleanup.conf.example`: sample configuration file.
 
 ## Usage
 
@@ -30,6 +31,27 @@ Clone the repository and run scripts locally on the runner host.
 ```bash
 git clone https://github.com/yaoge123/runner-cleanup.git
 cd runner-cleanup
+cp runner-cleanup.conf.example runner-cleanup.conf
+bash run.sh
+```
+
+## Configuration file
+
+The recommended way is to put long-lived settings in `runner-cleanup.conf`.
+
+Load order:
+
+- `RUNNER_CLEANUP_CONFIG=/path/to/file` if set.
+- `runner-cleanup.conf` in the repository directory.
+- `./runner-cleanup.conf` in the current working directory.
+
+Environment variables are still supported and override values from the config file for one-off runs.
+
+Example:
+
+```bash
+cp runner-cleanup.conf.example runner-cleanup.conf
+vim runner-cleanup.conf
 bash run.sh
 ```
 
@@ -49,13 +71,19 @@ ENABLE_LOCAL_CACHE_CLEANUP=0
 To enable runner local cache cleanup in dry-run mode:
 
 ```bash
-ENABLE_LOCAL_CACHE_CLEANUP=1 DRY_RUN=1 bash run.sh
+bash run.sh
 ```
 
 To execute real `runner-*` cleanup while preserving the 48-hour activity window:
 
 ```bash
-ENABLE_LOCAL_CACHE_CLEANUP=1 DRY_RUN=0 ACTIVE_WINDOW_HOURS=48 WORKSPACE_MAX_AGE_DAYS=7 bash run.sh
+DRY_RUN=0 bash run.sh
+```
+
+If you only want a temporary override without editing the config file:
+
+```bash
+DRY_RUN=0 MAX_DELETE_GB_PER_RUN=20 bash run.sh
 ```
 
 ## Local cache cleanup variables
@@ -95,13 +123,13 @@ TOP_N_LARGEST=20
 Start with dry-run for observation:
 
 ```bash
-0 * * * * cd /path/to/runner-cleanup && ENABLE_LOCAL_CACHE_CLEANUP=1 DRY_RUN=1 bash run.sh >> cleanup.log 2>&1
+0 * * * * cd /path/to/runner-cleanup && bash run.sh >> cleanup.log 2>&1
 ```
 
 After validation, enable real cleanup:
 
 ```bash
-0 3 * * * cd /path/to/runner-cleanup && ENABLE_LOCAL_CACHE_CLEANUP=1 DRY_RUN=0 bash run.sh >> cleanup.log 2>&1
+0 3 * * * cd /path/to/runner-cleanup && DRY_RUN=0 bash run.sh >> cleanup.log 2>&1
 ```
 
 ## Notes

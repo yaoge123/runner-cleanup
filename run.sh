@@ -4,6 +4,10 @@ set -euo pipefail
 
 SCRIPT_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 
+# shellcheck disable=SC1091
+. "${SCRIPT_DIR}/load-config.sh"
+load_runner_cleanup_config "${SCRIPT_DIR}"
+
 KEEP_MAX_IMAGES=${KEEP_MAX_IMAGES:-5}
 ENABLE_IMAGE_CLEANUP=${ENABLE_IMAGE_CLEANUP:-1}
 ENABLE_DOCKER_CACHE_CLEANUP=${ENABLE_DOCKER_CACHE_CLEANUP:-1}
