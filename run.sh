@@ -1,7 +1,22 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
-KEEP_MAX_IMAGES=5
-curl -sL "https://github.com/nh4ttruong/runner-cleanup/raw/main/clean.sh" | bash -s -- $KEEP_MAX_IMAGES
+set -euo pipefail
 
-# docker clear cache from https://docs.gitlab.com/runner/executors/docker.html#clear-the-docker-cache
-curl -sL "https://github.com/nh4ttruong/runner-cleanup/raw/main/clear-docker-cache.sh" | bash
+SCRIPT_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
+
+KEEP_MAX_IMAGES=${KEEP_MAX_IMAGES:-5}
+ENABLE_IMAGE_CLEANUP=${ENABLE_IMAGE_CLEANUP:-1}
+ENABLE_DOCKER_CACHE_CLEANUP=${ENABLE_DOCKER_CACHE_CLEANUP:-1}
+ENABLE_LOCAL_CACHE_CLEANUP=${ENABLE_LOCAL_CACHE_CLEANUP:-0}
+
+if [ "${ENABLE_IMAGE_CLEANUP}" = "1" ]; then
+  bash "${SCRIPT_DIR}/clean.sh" "${KEEP_MAX_IMAGES}"
+fi
+
+if [ "${ENABLE_DOCKER_CACHE_CLEANUP}" = "1" ]; then
+  bash "${SCRIPT_DIR}/clear-docker-cache.sh"
+fi
+
+if [ "${ENABLE_LOCAL_CACHE_CLEANUP}" = "1" ]; then
+  bash "${SCRIPT_DIR}/clear-runner-local-cache.sh"
+fi
