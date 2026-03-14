@@ -22,6 +22,8 @@ The local cache cleanup script treats data in three classes:
 - `clean.sh`: old Docker image cleanup.
 - `clear-docker-cache.sh`: runner-managed Docker container and volume cleanup.
 - `clear-runner-local-cache.sh`: host-based runner local cache scan and cleanup.
+- `logrotate/runner-cleanup`: sample logrotate policy for `/var/log/runner-cleanup/runner-cleanup.log`.
+- `test/run-logging-smoke.sh`: smoke test for built-in file logging.
 - `runner-cleanup.conf.example`: sample configuration file.
 
 ## Usage
@@ -46,6 +48,13 @@ Load order:
 - `./runner-cleanup.conf` in the current working directory.
 
 Environment variables are still supported and override values from the config file for one-off runs.
+
+Built-in file logging defaults to:
+
+- `RUNNER_CLEANUP_LOG_DIR=/var/log/runner-cleanup`
+- `RUNNER_CLEANUP_LOG_FILE=/var/log/runner-cleanup/runner-cleanup.log`
+
+You can install the sample rotation policy from `logrotate/runner-cleanup` to avoid unbounded log growth.
 
 Example:
 
@@ -95,6 +104,9 @@ RUNNER_CACHE_DIR=/cache
 DRY_RUN=1
 VERBOSE=1
 
+RUNNER_CLEANUP_LOG_DIR=/var/log/runner-cleanup
+RUNNER_CLEANUP_LOG_FILE=/var/log/runner-cleanup/runner-cleanup.log
+
 ENABLE_TMP_CLEANUP=1
 ENABLE_WORKSPACE_CLEANUP=1
 ENABLE_DUPLICATE_WORKSPACE_REPORT=1
@@ -123,18 +135,20 @@ TOP_N_LARGEST=20
 Start with dry-run for observation:
 
 ```bash
-0 * * * * cd /path/to/runner-cleanup && bash run.sh >> cleanup.log 2>&1
+0 * * * * cd /path/to/runner-cleanup && bash run.sh
 ```
 
 After validation, enable real cleanup:
 
 ```bash
-0 3 * * * cd /path/to/runner-cleanup && DRY_RUN=0 bash run.sh >> cleanup.log 2>&1
+0 3 * * * cd /path/to/runner-cleanup && DRY_RUN=0 bash run.sh
 ```
 
 ## Notes
 
 - Run the scripts with permissions that can read and delete the target cache directories.
+- File logging is handled by `run.sh`; cron no longer needs shell redirection for the normal case.
+- A sample `logrotate` config is provided in `logrotate/runner-cleanup`.
 - Removing workspace data can make the next job slower due to cache restore or rebuild.
 - Removing archive cache is intentionally left disabled in the first version.
 
