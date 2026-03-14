@@ -4,36 +4,56 @@ set -euo pipefail
 
 SCRIPT_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 
-# shellcheck disable=SC1091
-. "${SCRIPT_DIR}/load-config.sh"
-load_runner_cleanup_config "${SCRIPT_DIR}"
+setup_runner_cleanup_logging() {
+  local log_dir=$1
+  local log_file=$2
 
-if [ "${RUNNER_CLEANUP_LOGGING_INITIALIZED:-0}" != "1" ]; then
-  RUNNER_CLEANUP_LOG_DIR=${RUNNER_CLEANUP_LOG_DIR:-/var/log/runner-cleanup}
-  RUNNER_CLEANUP_LOG_FILE=${RUNNER_CLEANUP_LOG_FILE:-${RUNNER_CLEANUP_LOG_DIR}/runner-cleanup.log}
+  mkdir -p "${log_dir}"
 
-  mkdir -p "${RUNNER_CLEANUP_LOG_DIR}"
-
-  export RUNNER_CLEANUP_LOG_DIR
-  export RUNNER_CLEANUP_LOG_FILE
+  export RUNNER_CLEANUP_LOG_DIR="${log_dir}"
+  export RUNNER_CLEANUP_LOG_FILE="${log_file}"
   export RUNNER_CLEANUP_LOGGING_INITIALIZED=1
 
   if [ -t 1 ]; then
-    exec > >(tee -a "${RUNNER_CLEANUP_LOG_FILE}") 2>&1
+    exec > >(tee -a "${log_file}") 2>&1
   else
-    exec >>"${RUNNER_CLEANUP_LOG_FILE}" 2>&1
+    exec >>"${log_file}" 2>&1
   fi
-fi
+}
 
 runner_cleanup_finish() {
   local exit_code=$?
   printf '[%s] runner-cleanup end exit_code=%s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "${exit_code}"
 }
 
+BOOTSTRAP_LOG_DIR=${RUNNER_CLEANUP_LOG_DIR:-/var/log/runner-cleanup}
+BOOTSTRAP_LOG_FILE=${RUNNER_CLEANUP_LOG_FILE:-${BOOTSTRAP_LOG_DIR}/runner-cleanup.log}
+
+if [ "${RUNNER_CLEANUP_LOGGING_INITIALIZED:-0}" != "1" ]; then
+  setup_runner_cleanup_logging "${BOOTSTRAP_LOG_DIR}" "${BOOTSTRAP_LOG_FILE}"
+fi
+
 trap runner_cleanup_finish EXIT
 
+# shellcheck disable=SC1091
+. "${SCRIPT_DIR}/load-config.sh"
+load_runner_cleanup_config "${SCRIPT_DIR}"
+
+if [ "${RUNNER_CLEANUP_LOGGING_INITIALIZED:-0}" != "1" ]; then
+  setup_runner_cleanup_logging \
+    "${RUNNER_CLEANUP_LOG_DIR:-/var/log/runner-cleanup}" \
+    "${RUNNER_CLEANUP_LOG_FILE:-${RUNNER_CLEANUP_LOG_DIR:-/var/log/runner-cleanup}/runner-cleanup.log}"
+else
+  FINAL_LOG_DIR=${RUNNER_CLEANUP_LOG_DIR:-${BOOTSTRAP_LOG_DIR}}
+  FINAL_LOG_FILE=${RUNNER_CLEANUP_LOG_FILE:-${FINAL_LOG_DIR}/runner-cleanup.log}
+
+  if [ "${FINAL_LOG_FILE}" != "${BOOTSTRAP_LOG_FILE}" ]; then
+    setup_runner_cleanup_logging "${FINAL_LOG_DIR}" "${FINAL_LOG_FILE}"
+  fi
+fi
+
 printf '[%s] runner-cleanup start\n' "$(date '+%Y-%m-%d %H:%M:%S')"
-printf 'config=%s\n' "${RUNNER_CLEANUP_CONFIG:-${SCRIPT_DIR}/runner-cleanup.conf or ./runner-cleanup.conf}"
+printf 'config=%s\n' "${RUNNER_CLEANUP_LOADED_CONFIG:-none}"
 
 KEEP_MAX_IMAGES=${KEEP_MAX_IMAGES:-5}
 ENABLE_IMAGE_CLEANUP=${ENABLE_IMAGE_CLEANUP:-1}
