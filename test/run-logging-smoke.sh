@@ -20,7 +20,10 @@ RUNNER_CLEANUP_LOG_DIR=${LOG_DIR}
 RUNNER_CLEANUP_LOG_FILE=${LOG_FILE}
 EOF
 
-RUNNER_CLEANUP_CONFIG="${CONFIG_FILE}" bash "${REPO_DIR}/run.sh"
+RUNNER_CLEANUP_CONFIG="${CONFIG_FILE}" \
+RUNNER_CLEANUP_LOG_DIR="${LOG_DIR}" \
+RUNNER_CLEANUP_LOG_FILE="${LOG_FILE}" \
+  bash "${REPO_DIR}/run.sh"
 
 if [ ! -f "${LOG_FILE}" ]; then
   printf 'expected log file to exist: %s\n' "${LOG_FILE}" >&2

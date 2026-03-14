@@ -38,6 +38,8 @@ WORKSPACE_CANDIDATES_FILE="${WORK_DIR}/workspace_candidates.tsv"
 DUPLICATE_REPORT_FILE="${WORK_DIR}/duplicate_report.tsv"
 SUMMARY_FILE="${WORK_DIR}/summary.txt"
 
+declare -A NEWEST_MTIME_CACHE=()
+
 TMP_COUNT=0
 WORKSPACE_COUNT=0
 ARCHIVE_COUNT=0
@@ -102,14 +104,80 @@ get_mtime() {
   stat -c %Y "$1"
 }
 
+get_newest_mtime() {
+  local path=$1
+
+  if [ -n "${NEWEST_MTIME_CACHE[${path}]:-}" ]; then
+    printf '%s\n' "${NEWEST_MTIME_CACHE[${path}]}"
+    return 0
+  fi
+
+  local newest_mtime
+  newest_mtime=$(python3 - "$path" <<'PY'
+import os
+import sys
+
+path = sys.argv[1]
+
+try:
+    root_stat = os.stat(path, follow_symlinks=False)
+except OSError:
+    print(0)
+    raise SystemExit(0)
+
+newest = int(root_stat.st_mtime)
+
+if os.path.isdir(path):
+    for base, dirs, files in os.walk(path):
+        for name in dirs + files:
+            child = os.path.join(base, name)
+            try:
+                newest = max(newest, int(os.stat(child, follow_symlinks=False).st_mtime))
+            except OSError:
+                pass
+
+print(newest)
+PY
+)
+
+  NEWEST_MTIME_CACHE[${path}]="${newest_mtime}"
+  printf '%s\n' "${newest_mtime}"
+}
+
 get_size() {
-  du -sb "$1" 2>/dev/null | cut -f1
+  python3 - "$1" <<'PY'
+import os
+import sys
+
+path = sys.argv[1]
+
+def entry_size(target):
+    total = 0
+    try:
+        st = os.stat(target, follow_symlinks=False)
+    except OSError:
+        return 0
+
+    if not os.path.isdir(target):
+        return st.st_size
+
+    for base, dirs, files in os.walk(target):
+        for name in files:
+            child = os.path.join(base, name)
+            try:
+                total += os.stat(child, follow_symlinks=False).st_size
+            except OSError:
+                pass
+    return total
+
+print(entry_size(path))
+PY
 }
 
 is_active() {
   local path=$1
   local mtime
-  mtime=$(get_mtime "${path}")
+  mtime=$(get_newest_mtime "${path}")
   [ $((NOW_TS - mtime)) -lt "${ACTIVE_WINDOW_SECONDS}" ]
 }
 
@@ -117,7 +185,7 @@ is_older_than() {
   local path=$1
   local threshold_seconds=$2
   local mtime
-  mtime=$(get_mtime "${path}")
+  mtime=$(get_newest_mtime "${path}")
   [ $((NOW_TS - mtime)) -gt "${threshold_seconds}" ]
 }
 
@@ -157,7 +225,7 @@ scan_tmp_candidates() {
 
     local size mtime label
     size=$(get_size "${path}")
-    mtime=$(get_mtime "${path}")
+    mtime=$(get_newest_mtime "${path}")
     label="SAFE_TMP"
 
     if [ -z "$(find "${path}" -mindepth 1 -print -quit 2>/dev/null)" ]; then
@@ -201,17 +269,19 @@ scan_workspace_candidates() {
 
     local size mtime
     size=$(get_size "${path}")
-    mtime=$(get_mtime "${path}")
+    mtime=$(get_newest_mtime "${path}")
     append_candidate "${WORKSPACE_CANDIDATES_FILE}" "WORKSPACE_REBUILDABLE" "${size}" "${mtime}" "${path}"
   done < <(find "${RUNNER_CACHE_DIR}" -mindepth 4 -maxdepth 4 -type d -path "${RUNNER_CACHE_DIR}/runner-*/*/*/*" 2>/dev/null)
 }
 
 scan_duplicate_workspaces() {
-  [ "${ENABLE_DUPLICATE_WORKSPACE_REPORT}" = "1" ] || return 0
+  if [ "${ENABLE_DUPLICATE_WORKSPACE_REPORT}" != "1" ] && [ "${ENABLE_DUPLICATE_WORKSPACE_CLEANUP}" != "1" ]; then
+    return 0
+  fi
 
   : > "${DUPLICATE_REPORT_FILE}"
 
-  python3 - "${RUNNER_CACHE_DIR}" "${NOW_TS}" "${ACTIVE_WINDOW_SECONDS}" "${KEEP_WORKSPACE_COPIES}" "${ENABLE_DUPLICATE_WORKSPACE_CLEANUP}" "${WORKSPACE_CANDIDATES_FILE}" "${DUPLICATE_REPORT_FILE}" <<'PY'
+  python3 - "${RUNNER_CACHE_DIR}" "${NOW_TS}" "${ACTIVE_WINDOW_SECONDS}" "${KEEP_WORKSPACE_COPIES}" "${ENABLE_DUPLICATE_WORKSPACE_CLEANUP}" "${WORKSPACE_MAX_AGE_SECONDS}" "${WORKSPACE_CANDIDATES_FILE}" "${DUPLICATE_REPORT_FILE}" "${ENABLE_DUPLICATE_WORKSPACE_REPORT}" <<'PY'
 import os
 import sys
 from collections import defaultdict
@@ -221,10 +291,38 @@ now_ts = int(sys.argv[2])
 active_window = int(sys.argv[3])
 keep_copies = int(sys.argv[4])
 enable_cleanup = sys.argv[5] == "1"
-workspace_candidates_file = sys.argv[6]
-duplicate_report_file = sys.argv[7]
+workspace_max_age = int(sys.argv[6])
+workspace_candidates_file = sys.argv[7]
+duplicate_report_file = sys.argv[8]
+enable_report = sys.argv[9] == "1"
 
 groups = defaultdict(list)
+
+
+def recursive_stats(path):
+    try:
+        root_stat = os.stat(path, follow_symlinks=False)
+    except OSError:
+        return 0, 0
+
+    newest = int(root_stat.st_mtime)
+    size = 0
+
+    if not os.path.isdir(path):
+        return newest, root_stat.st_size
+
+    for base, dirs, files in os.walk(path):
+        for name in dirs + files:
+            child = os.path.join(base, name)
+            try:
+                st = os.stat(child, follow_symlinks=False)
+            except OSError:
+                continue
+            newest = max(newest, int(st.st_mtime))
+            if not os.path.isdir(child):
+                size += st.st_size
+
+    return newest, size
 
 for runner_dir in os.listdir(root):
     if not runner_dir.startswith("runner-"):
@@ -261,20 +359,9 @@ for runner_dir in os.listdir(root):
                 project_path = os.path.join(namespace_path, project)
                 if not os.path.isdir(project_path):
                     continue
-                try:
-                    st = os.stat(project_path)
-                except FileNotFoundError:
-                    continue
-                size = 0
-                for base, dirs, files in os.walk(project_path):
-                    for name in files:
-                        fp = os.path.join(base, name)
-                        try:
-                            size += os.path.getsize(fp)
-                        except OSError:
-                            pass
+                newest_mtime, size = recursive_stats(project_path)
                 key = f"{namespace}/{project}|{protection}"
-                groups[key].append((int(st.st_mtime), size, project_path))
+                groups[key].append((newest_mtime, size, project_path))
 
 with open(duplicate_report_file, "w", encoding="utf-8") as report, open(workspace_candidates_file, "a", encoding="utf-8") as candidates:
     for key in sorted(groups):
@@ -284,23 +371,23 @@ with open(duplicate_report_file, "w", encoding="utf-8") as report, open(workspac
         items.sort(key=lambda item: item[0], reverse=True)
         namespace_project, protection = key.split("|", 1)
         total_size = sum(item[1] for item in items)
-        report.write(f"{namespace_project}\t{protection}\t{len(items)}\t{total_size}\n")
+        if enable_report:
+            report.write(f"{namespace_project}\t{protection}\t{len(items)}\t{total_size}\n")
         if not enable_cleanup:
             continue
         keep = []
-        removable = []
         for item in items:
             mtime, size, path = item
             if now_ts - mtime < active_window:
                 keep.append(item)
-            else:
-                removable.append(item)
         protected_keep = max(keep_copies, len(keep))
         for idx, item in enumerate(items):
             if idx < protected_keep:
                 continue
             mtime, size, path = item
             if now_ts - mtime < active_window:
+                continue
+            if now_ts - mtime <= workspace_max_age:
                 continue
             candidates.write(f"WORKSPACE_REBUILDABLE\t{size}\t{mtime}\t{path}\n")
 PY
@@ -406,4 +493,6 @@ main() {
   print_result
 }
 
-main "$@"
+if [ "${BASH_SOURCE[0]}" = "$0" ]; then
+  main "$@"
+fi

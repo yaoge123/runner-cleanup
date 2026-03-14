@@ -14,7 +14,7 @@ The local cache cleanup script treats data in three classes:
 
 - `SAFE_TMP`: temporary `*.tmp` directories, safe to remove.
 - `WORKSPACE_REBUILDABLE`: stale project workspaces under `runner-*`; removing them may cause archive re-extraction or a fresh clone/build, but does not delete archive cache.
-- `ARCHIVE_CACHE`: `cache.zip` files. These are reported only in the first version and are not deleted by default.
+- `ARCHIVE_CACHE`: `cache.zip` files. These are scanned and counted in the first version and are not deleted by default.
 
 ## Files
 
@@ -56,6 +56,8 @@ Built-in file logging defaults to:
 
 You can install the sample rotation policy from `logrotate/runner-cleanup` to avoid unbounded log growth.
 
+For local non-root runs, export `RUNNER_CLEANUP_LOG_DIR` and `RUNNER_CLEANUP_LOG_FILE` before invoking `run.sh` if `/var/log/runner-cleanup` is not writable.
+
 Example:
 
 ```bash
@@ -77,22 +79,22 @@ ENABLE_DOCKER_CACHE_CLEANUP=1
 ENABLE_LOCAL_CACHE_CLEANUP=0
 ```
 
-To enable runner local cache cleanup in dry-run mode:
+To enable runner local cache cleanup in dry-run mode, set `ENABLE_LOCAL_CACHE_CLEANUP=1` either in `runner-cleanup.conf` or on the command line:
 
 ```bash
-bash run.sh
+ENABLE_LOCAL_CACHE_CLEANUP=1 bash run.sh
 ```
 
 To execute real `runner-*` cleanup while preserving the 48-hour activity window:
 
 ```bash
-DRY_RUN=0 bash run.sh
+ENABLE_LOCAL_CACHE_CLEANUP=1 DRY_RUN=0 bash run.sh
 ```
 
 If you only want a temporary override without editing the config file:
 
 ```bash
-DRY_RUN=0 MAX_DELETE_GB_PER_RUN=20 bash run.sh
+ENABLE_LOCAL_CACHE_CLEANUP=1 DRY_RUN=0 MAX_DELETE_GB_PER_RUN=20 bash run.sh
 ```
 
 ## Local cache cleanup variables
@@ -127,7 +129,8 @@ TOP_N_LARGEST=20
 - The first version only cleans `runner-*` workspaces and `*.tmp` directories.
 - `cache.zip` archive files are scanned and counted, but not removed by default.
 - `protected` and unprotected workspaces are handled separately.
-- Paths updated in the last 48 hours are preserved by default.
+- A workspace is treated as active when the newest file or directory mtime anywhere under that tree is within the active window.
+- Duplicate workspace cleanup keeps the newest `KEEP_WORKSPACE_COPIES` copies per `namespace/project + protection` and still respects `WORKSPACE_MAX_AGE_DAYS`.
 - Cleanup is capped by `MAX_DELETE_GB_PER_RUN`.
 
 ## Cron example
@@ -141,7 +144,7 @@ Start with dry-run for observation:
 After validation, enable real cleanup:
 
 ```bash
-0 3 * * * cd /path/to/runner-cleanup && DRY_RUN=0 bash run.sh
+0 3 * * * cd /path/to/runner-cleanup && ENABLE_LOCAL_CACHE_CLEANUP=1 DRY_RUN=0 bash run.sh
 ```
 
 ## Notes
@@ -151,6 +154,7 @@ After validation, enable real cleanup:
 - A sample `logrotate` config is provided in `logrotate/runner-cleanup`.
 - Removing workspace data can make the next job slower due to cache restore or rebuild.
 - Removing archive cache is intentionally left disabled in the first version.
+- `config=` in the log reflects the actual config file that was loaded, or `none` when no config file was found.
 
 ## Related
 
