@@ -77,7 +77,7 @@ The settings below are the ones operators are expected to change. They come from
 | `ENABLE_DOCKER_CACHE_CLEANUP` | `1` in `run.sh` | `run.sh` -> `clear-docker-cache.sh` | Set to `0` if you do not want runner-managed Docker objects pruned. |
 | `ENABLE_LOCAL_CACHE_CLEANUP` | `1` in `run.sh` | `run.sh` -> `clear-runner-local-cache.sh` | Disable only if this host should skip local cache cleanup entirely. |
 | `RUNNER_CACHE_DIR` | `/cache` | `clear-runner-local-cache.sh` | Change only when the runner host stores local cache under another allowlisted path. |
-| `DRY_RUN` | `1` in `clear-runner-local-cache.sh` | `clear-runner-local-cache.sh` | Set to `0` only after validating candidate selection. |
+| `DRY_RUN` | `1` in `run.sh` and child scripts | `run.sh`, `clean.sh`, `clear-docker-cache.sh`, `clear-runner-local-cache.sh` | Set to `0` only after validating the full cleanup flow. |
 | `VERBOSE` | `1` in `clear-runner-local-cache.sh` | `clear-runner-local-cache.sh` | Set to `0` if you want less scan detail in logs. |
 | `ENABLE_TMP_CLEANUP` | `1` | `clear-runner-local-cache.sh` | Set to `0` to leave `*.tmp` directories untouched. |
 | `ENABLE_WORKSPACE_CLEANUP` | `1` | `clear-runner-local-cache.sh` | Set to `0` to disable stale workspace deletion. |
@@ -194,7 +194,7 @@ com.gitlab.gitlab-runner.managed=true
 
 That keeps it focused on runner-created Docker resources instead of arbitrary user containers.
 
-Manual execution now defaults to observation mode: `run.sh` enables local cache cleanup by default, while `clear-runner-local-cache.sh` still defaults to `DRY_RUN=1`. So the safest first check is simply:
+Manual execution now defaults to observation mode: `run.sh` enables all cleanup layers by default, and `DRY_RUN=1` is exported to image cleanup, Docker cleanup, and local cache cleanup together. So the safest first check is simply:
 
 ```bash
 bash run.sh
@@ -258,7 +258,7 @@ For cron, keep the command plain and let `runner-cleanup.conf` decide whether th
 
 Recommended model:
 
-- Manual execution uses script defaults, so `bash run.sh` is dry-run observation by default.
+- Manual execution uses script defaults, so `bash run.sh` is dry-run observation across all cleanup layers by default.
 - Cron also runs plain `bash run.sh`; the deployed `runner-cleanup.conf` on that host determines the actual mode.
 - On a production runner host, review manual dry-run output first, then set `DRY_RUN=0` in the deployed config when you are ready for real cleanup.
 
@@ -275,6 +275,7 @@ Current deployment on the runner host uses these concrete paths:
 - File logging is handled by `run.sh`; cron no longer needs shell redirection for the normal case.
 - A sample `logrotate` config is provided in `logrotate/runner-cleanup`.
 - On the current runner host, install that sample as `/etc/logrotate.d/runner-cleanup` so `/var/log/runner-cleanup/runner-cleanup.log` does not grow without bound.
+- `DRY_RUN=1` now protects all three cleanup layers; `clean.sh` and `clear-docker-cache.sh` print the Docker commands they would run instead of deleting anything.
 - Removing workspace data can make the next job slower due to cache restore or rebuild.
 - Removing archive cache is intentionally left disabled in the first version.
 - `config=` in the log reflects the actual config file that was loaded, or `none` when no config file was found.

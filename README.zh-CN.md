@@ -75,7 +75,7 @@ bash run.sh
 | `ENABLE_DOCKER_CACHE_CLEANUP` | `run.sh` 中为 `1` | `run.sh` -> `clear-docker-cache.sh` | 如果不希望清理 Runner 管理的 Docker 对象，设为 `0`。 |
 | `ENABLE_LOCAL_CACHE_CLEANUP` | `run.sh` 中为 `1` | `run.sh` -> `clear-runner-local-cache.sh` | 只有在这台主机完全不需要本地缓存清理时才建议关闭。 |
 | `RUNNER_CACHE_DIR` | `/cache` | `clear-runner-local-cache.sh` | 仅在 Runner 本地缓存不在默认允许路径中时调整。 |
-| `DRY_RUN` | `clear-runner-local-cache.sh` 中为 `1` | `clear-runner-local-cache.sh` | 确认候选项正确前不要改成 `0`。 |
+| `DRY_RUN` | `run.sh` 与子脚本中为 `1` | `run.sh`、`clean.sh`、`clear-docker-cache.sh`、`clear-runner-local-cache.sh` | 只有在确认整套清理流程都正确后才改成 `0`。 |
 | `VERBOSE` | `clear-runner-local-cache.sh` 中为 `1` | `clear-runner-local-cache.sh` | 如果想减少日志输出，可设为 `0`。 |
 | `ENABLE_TMP_CLEANUP` | `1` | `clear-runner-local-cache.sh` | 如果不想动 `*.tmp` 目录，设为 `0`。 |
 | `ENABLE_WORKSPACE_CLEANUP` | `1` | `clear-runner-local-cache.sh` | 如果不想删陈旧工作区，设为 `0`。 |
@@ -192,7 +192,7 @@ com.gitlab.gitlab-runner.managed=true
 
 这样可以把清理范围限制在 Runner 创建的 Docker 资源上，而不会误伤普通用户容器。
 
-手工执行现在默认就是观察模式：`run.sh` 默认启用本地缓存清理，而 `clear-runner-local-cache.sh` 仍然默认 `DRY_RUN=1`。因此最安全的首次检查就是直接执行：
+手工执行现在默认就是观察模式：`run.sh` 默认启用三层清理，并把 `DRY_RUN=1` 一起传给镜像清理、Docker 清理和本地缓存清理。因此最安全的首次检查就是直接执行：
 
 ```bash
 bash run.sh
@@ -256,7 +256,7 @@ TOP_N_LARGEST=20
 
 推荐模型：
 
-- 手工执行使用脚本默认值，因此 `bash run.sh` 默认就是 dry-run 观察。
+- 手工执行使用脚本默认值，因此 `bash run.sh` 默认会让三层清理都处于 dry-run 观察模式。
 - cron 也执行同样的 `bash run.sh`，但该主机部署的 `runner-cleanup.conf` 决定实际运行模式。
 - 在生产 runner 主机上，只有在人工检查过手工 dry-run 输出之后，才把部署配置里的 `DRY_RUN` 改成 `0`。
 
@@ -273,6 +273,7 @@ TOP_N_LARGEST=20
 - 正常情况下，文件日志由 `run.sh` 处理，cron 不需要额外做 shell 重定向。
 - 仓库中提供了 `logrotate` 示例配置：`logrotate/runner-cleanup`。
 - 在当前 runner 主机上，应该把这个示例安装为 `/etc/logrotate.d/runner-cleanup`，避免 `/var/log/runner-cleanup/runner-cleanup.log` 无限增长。
+- `DRY_RUN=1` 现在会保护三层清理；`clean.sh` 和 `clear-docker-cache.sh` 会打印“本来会执行的 Docker 命令”，而不会真正删除。
 - 删除工作区数据后，后续 Job 可能因为重新恢复缓存或重新构建而变慢。
 - 删除 archive 缓存仍然故意保持关闭状态。
 - 日志里的 `config=` 表示实际加载到的配置文件路径；如果没有加载配置文件，则显示 `none`。
