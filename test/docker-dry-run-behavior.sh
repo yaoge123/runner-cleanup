@@ -43,7 +43,7 @@ case "$*" in
     printf 'repo1\n'
     ;;
   "images --format {{.ID}} --filter=reference=repo1")
-    printf 'img-new\nimg-old\n'
+    printf 'img-new\nimg-new\nimg-old\n'
     ;;
   "version --format {{.Client.APIVersion}}")
     printf '%s\n' "${RUNNER_CLEANUP_TEST_DOCKER_API_VERSION:-1.43}"
@@ -67,6 +67,7 @@ PATH="${TMP_DIR}/bin:${PATH}" RUNNER_CLEANUP_TEST_DOCKER_LOG="${DOCKER_LOG}" DRY
 
 assert_file_contains "${OUTPUT_LOG}" 'Would remove 1 old image(s) of repository: repo1'
 assert_file_contains "${OUTPUT_LOG}" 'DRY_RUN=1 would run: docker rmi -f img-old'
+assert_file_not_contains "${OUTPUT_LOG}" 'img-new'
 assert_file_not_contains "${DOCKER_LOG}" 'rmi -f'
 
 : > "${DOCKER_LOG}"
@@ -80,14 +81,12 @@ assert_file_not_contains "${DOCKER_LOG}" 'system prune'
 PATH="${TMP_DIR}/bin:${PATH}" RUNNER_CLEANUP_TEST_DOCKER_LOG="${DOCKER_LOG}" RUNNER_CLEANUP_TEST_DOCKER_CLIENT_VERSION='17.05.0' DRY_RUN=1 \
   bash "${REPO_DIR}/clear-docker-cache.sh" prune > "${OUTPUT_LOG}"
 
-assert_file_contains "${OUTPUT_LOG}" 'DRY_RUN=1 would run: docker rm container-1'
-assert_file_contains "${OUTPUT_LOG}" 'container-2'
+assert_file_contains "${OUTPUT_LOG}" 'DRY_RUN=1 would run: docker rm container-1 container-2'
 assert_file_not_contains "${DOCKER_LOG}" 'rm container-1'
 
 : > "${DOCKER_LOG}"
 PATH="${TMP_DIR}/bin:${PATH}" RUNNER_CLEANUP_TEST_DOCKER_LOG="${DOCKER_LOG}" RUNNER_CLEANUP_TEST_DOCKER_CLIENT_VERSION='17.03.0' DRY_RUN=1 \
   bash "${REPO_DIR}/clear-docker-cache.sh" prune-volumes > "${OUTPUT_LOG}"
 
-assert_file_contains "${OUTPUT_LOG}" 'DRY_RUN=1 would run: docker rm -v container-1'
-assert_file_contains "${OUTPUT_LOG}" 'container-2'
+assert_file_contains "${OUTPUT_LOG}" 'DRY_RUN=1 would run: docker rm -v container-1 container-2'
 assert_file_not_contains "${DOCKER_LOG}" 'rm -v container-1'
