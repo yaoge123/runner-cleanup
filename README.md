@@ -8,6 +8,19 @@ Shell scripts for keeping GitLab Runner hosts clean without touching GitLab or r
 - Runs GitLab Runner Docker cleanup for unused runner-managed containers and volumes.
 - Scans and cleans host-based runner local cache under `runner-*` directories.
 
+## Cleanup layers
+
+`run.sh` can drive three independent cleanup layers:
+
+- `ENABLE_IMAGE_CLEANUP=1`: run `clean.sh` to prune old Docker images.
+- `ENABLE_DOCKER_CACHE_CLEANUP=1`: run `clear-docker-cache.sh` for runner-managed Docker garbage.
+- `ENABLE_LOCAL_CACHE_CLEANUP=1`: run `clear-runner-local-cache.sh` for host-based `runner-*` cache/workspace data.
+
+The Docker-facing cleanup and the host local-cache cleanup are different:
+
+- Docker cleanup targets Docker objects managed by GitLab Runner, such as stopped containers and unused volumes.
+- Local cache cleanup targets files under the runner cache directory on the host, especially `runner-*` workspaces and `*.tmp` directories.
+
 ## Local cache model
 
 The local cache cleanup script treats data in three classes:
@@ -49,6 +62,51 @@ Load order:
 
 Environment variables are still supported and override values from the config file for one-off runs.
 
+## Configuration reference
+
+The settings below are the ones operators are expected to change. They come from `runner-cleanup.conf.example`, from explicit environment overrides, or from the defaults inside `run.sh` and `clear-runner-local-cache.sh`.
+
+### User-facing settings
+
+| Variable | Default | Used by | When to change |
+| --- | --- | --- | --- |
+| `KEEP_MAX_IMAGES` | `5` in `run.sh` | `clean.sh` | Raise or lower Docker image retention per repository. |
+| `ENABLE_IMAGE_CLEANUP` | `1` in `run.sh` | `run.sh` -> `clean.sh` | Set to `0` if you do not want old Docker images removed. |
+| `ENABLE_DOCKER_CACHE_CLEANUP` | `1` in `run.sh` | `run.sh` -> `clear-docker-cache.sh` | Set to `0` if you do not want runner-managed Docker objects pruned. |
+| `ENABLE_LOCAL_CACHE_CLEANUP` | `0` in `run.sh` | `run.sh` -> `clear-runner-local-cache.sh` | Must be `1` to enable host local-cache cleanup. |
+| `RUNNER_CACHE_DIR` | `/cache` | `clear-runner-local-cache.sh` | Change only when the runner host stores local cache under another allowlisted path. |
+| `DRY_RUN` | `1` in `clear-runner-local-cache.sh` | `clear-runner-local-cache.sh` | Set to `0` only after validating candidate selection. |
+| `VERBOSE` | `1` in `clear-runner-local-cache.sh` | `clear-runner-local-cache.sh` | Set to `0` if you want less scan detail in logs. |
+| `ENABLE_TMP_CLEANUP` | `1` | `clear-runner-local-cache.sh` | Set to `0` to leave `*.tmp` directories untouched. |
+| `ENABLE_WORKSPACE_CLEANUP` | `1` | `clear-runner-local-cache.sh` | Set to `0` to disable stale workspace deletion. |
+| `ENABLE_DUPLICATE_WORKSPACE_REPORT` | `1` | `clear-runner-local-cache.sh` | Set to `0` to skip duplicate-group reporting. |
+| `ENABLE_DUPLICATE_WORKSPACE_CLEANUP` | `1` | `clear-runner-local-cache.sh` | Set to `0` to keep duplicate workspaces even if they are stale. |
+| `ENABLE_ARCHIVE_CLEANUP` | `0` | `clear-runner-local-cache.sh` | Reserved for future use; current code scans and counts archive files only. |
+| `TMP_MAX_AGE_DAYS` | `1` | `clear-runner-local-cache.sh` | Raise if tmp directories should survive longer before cleanup. |
+| `WORKSPACE_MAX_AGE_DAYS` | `7` | `clear-runner-local-cache.sh` | Main stale threshold for workspace and duplicate cleanup. |
+| `ACTIVE_WINDOW_HOURS` | `48` | `clear-runner-local-cache.sh` | Increase if recently active trees should stay protected longer. |
+| `KEEP_WORKSPACE_COPIES` | `1` | `clear-runner-local-cache.sh` | Raise if you want to retain more duplicate copies per `namespace/project + protection`. |
+| `MAX_DELETE_GB_PER_RUN` | `10` | `clear-runner-local-cache.sh` | Lower for safer incremental cleanup, raise for faster reclamation. |
+| `TOP_N_LARGEST` | `20` | `clear-runner-local-cache.sh` | Adjust how many largest paths are shown in scan output. |
+| `RUNNER_CLEANUP_CONFIG` | unset | `load-config.sh`, `run.sh` | Point to a specific config file instead of auto-discovery. |
+| `RUNNER_CLEANUP_LOG_DIR` | `/var/log/runner-cleanup` | `run.sh` | Override when `/var/log/runner-cleanup` is not writable, such as local non-root tests. |
+| `RUNNER_CLEANUP_LOG_FILE` | `/var/log/runner-cleanup/runner-cleanup.log` | `run.sh` | Override when a different log file path is required. |
+
+### Internal script variables
+
+These are implementation details, not normal operator settings:
+
+| Variable | Produced by | Meaning |
+| --- | --- | --- |
+| `RUNNER_CLEANUP_LOADED_CONFIG` | `load-config.sh` | Absolute path of the config file actually loaded; `run.sh` writes it as `config=...` in logs. |
+| `RUNNER_CLEANUP_LOGGING_INITIALIZED` | `run.sh` | Internal guard that prevents repeated bootstrap log setup. |
+| `BOOTSTRAP_LOG_DIR` | `run.sh` | Temporary pre-config logging directory used before final config resolution. |
+| `BOOTSTRAP_LOG_FILE` | `run.sh` | Temporary pre-config log file path used during early startup. |
+| `FINAL_LOG_DIR` | `run.sh` | Final resolved log directory after config/env evaluation. |
+| `FINAL_LOG_FILE` | `run.sh` | Final resolved log file after config/env evaluation. |
+
+Do not put the internal variables above in `runner-cleanup.conf` unless you are debugging the scripts themselves.
+
 Built-in file logging defaults to:
 
 - `RUNNER_CLEANUP_LOG_DIR=/var/log/runner-cleanup`
@@ -78,6 +136,61 @@ ENABLE_IMAGE_CLEANUP=1
 ENABLE_DOCKER_CACHE_CLEANUP=1
 ENABLE_LOCAL_CACHE_CLEANUP=0
 ```
+
+`run.sh` executes cleanup in this order:
+
+1. `clean.sh "${KEEP_MAX_IMAGES}"`
+2. `clear-docker-cache.sh`
+3. `clear-runner-local-cache.sh`
+
+Each layer can be enabled or disabled independently.
+
+## Docker cleanup variables
+
+`run.sh`, `clean.sh`, and `clear-docker-cache.sh` use these Docker-related settings:
+
+```bash
+KEEP_MAX_IMAGES=5
+ENABLE_IMAGE_CLEANUP=1
+ENABLE_DOCKER_CACHE_CLEANUP=1
+```
+
+- `KEEP_MAX_IMAGES`: passed to `clean.sh` as a positional argument; for each Docker repository name, keep only the newest `KEEP_MAX_IMAGES` images and remove older ones.
+- `ENABLE_IMAGE_CLEANUP`: when `1`, run `clean.sh`; when `0`, skip old-image cleanup completely.
+- `ENABLE_DOCKER_CACHE_CLEANUP`: when `1`, run `clear-docker-cache.sh`; when `0`, skip runner-managed Docker container/volume cleanup.
+
+### `clean.sh`
+
+- Enumerates Docker repositories with `docker images --format '{{.Repository}}'`.
+- Works per repository, not globally across all images.
+- Removes older image IDs and keeps the newest `KEEP_MAX_IMAGES` entries for each repository name.
+- Uses `docker rmi -f`, so this layer is more aggressive than the local cache cleanup.
+
+### `clear-docker-cache.sh`
+
+Supported commands:
+
+```bash
+bash clear-docker-cache.sh prune-volumes
+bash clear-docker-cache.sh prune
+bash clear-docker-cache.sh space
+bash clear-docker-cache.sh help
+```
+
+- `prune-volumes`: remove unused runner-managed containers and volumes.
+- `prune`: remove unused runner-managed containers only.
+- `space`: show Docker disk usage.
+- `help`: show usage.
+
+`run.sh` invokes `clear-docker-cache.sh` with no arguments, so the default action is `prune-volumes`.
+
+This script only targets Docker objects carrying the GitLab Runner managed label:
+
+```text
+com.gitlab.gitlab-runner.managed=true
+```
+
+That keeps it focused on runner-created Docker resources instead of arbitrary user containers.
 
 To enable runner local cache cleanup in dry-run mode, set `ENABLE_LOCAL_CACHE_CLEANUP=1` either in `runner-cleanup.conf` or on the command line:
 
