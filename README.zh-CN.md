@@ -73,7 +73,7 @@ bash run.sh
 | `KEEP_MAX_IMAGES` | `run.sh` 中为 `5` | `clean.sh` | 调整每个 Docker 仓库保留的镜像数量。 |
 | `ENABLE_IMAGE_CLEANUP` | `run.sh` 中为 `1` | `run.sh` -> `clean.sh` | 如果不希望删除旧 Docker 镜像，设为 `0`。 |
 | `ENABLE_DOCKER_CACHE_CLEANUP` | `run.sh` 中为 `1` | `run.sh` -> `clear-docker-cache.sh` | 如果不希望清理 Runner 管理的 Docker 对象，设为 `0`。 |
-| `ENABLE_LOCAL_CACHE_CLEANUP` | `run.sh` 中为 `0` | `run.sh` -> `clear-runner-local-cache.sh` | 只有设为 `1` 才会启用主机本地缓存清理。 |
+| `ENABLE_LOCAL_CACHE_CLEANUP` | `run.sh` 中为 `1` | `run.sh` -> `clear-runner-local-cache.sh` | 只有在这台主机完全不需要本地缓存清理时才建议关闭。 |
 | `RUNNER_CACHE_DIR` | `/cache` | `clear-runner-local-cache.sh` | 仅在 Runner 本地缓存不在默认允许路径中时调整。 |
 | `DRY_RUN` | `clear-runner-local-cache.sh` 中为 `1` | `clear-runner-local-cache.sh` | 确认候选项正确前不要改成 `0`。 |
 | `VERBOSE` | `clear-runner-local-cache.sh` 中为 `1` | `clear-runner-local-cache.sh` | 如果想减少日志输出，可设为 `0`。 |
@@ -134,7 +134,7 @@ bash run.sh
 KEEP_MAX_IMAGES=5
 ENABLE_IMAGE_CLEANUP=1
 ENABLE_DOCKER_CACHE_CLEANUP=1
-ENABLE_LOCAL_CACHE_CLEANUP=0
+ENABLE_LOCAL_CACHE_CLEANUP=1
 ```
 
 `run.sh` 按如下顺序执行清理：
@@ -192,22 +192,22 @@ com.gitlab.gitlab-runner.managed=true
 
 这样可以把清理范围限制在 Runner 创建的 Docker 资源上，而不会误伤普通用户容器。
 
-如果要用 dry-run 方式启用本地缓存清理，请在 `runner-cleanup.conf` 或命令行中设置 `ENABLE_LOCAL_CACHE_CLEANUP=1`：
+手工执行现在默认就是观察模式：`run.sh` 默认启用本地缓存清理，而 `clear-runner-local-cache.sh` 仍然默认 `DRY_RUN=1`。因此最安全的首次检查就是直接执行：
 
 ```bash
-ENABLE_LOCAL_CACHE_CLEANUP=1 bash run.sh
+bash run.sh
 ```
 
-如果要执行真实的 `runner-*` 清理，同时保留 48 小时活跃窗口：
+如果要手工执行真实的 `runner-*` 清理，同时保留 48 小时活跃窗口：
 
 ```bash
-ENABLE_LOCAL_CACHE_CLEANUP=1 DRY_RUN=0 bash run.sh
+DRY_RUN=0 bash run.sh
 ```
 
-如果只想临时覆盖而不改配置文件：
+如果只想临时一次性覆盖而不改配置文件：
 
 ```bash
-ENABLE_LOCAL_CACHE_CLEANUP=1 DRY_RUN=0 MAX_DELETE_GB_PER_RUN=20 bash run.sh
+DRY_RUN=0 MAX_DELETE_GB_PER_RUN=20 bash run.sh
 ```
 
 ## 本地缓存清理配置
@@ -248,17 +248,17 @@ TOP_N_LARGEST=20
 
 ## Cron 示例
 
-先用 dry-run 观察：
+对于 cron，命令应尽量保持简单，把 dry-run / 真实清理的区别交给 `runner-cleanup.conf` 决定：
 
-```bash
-0 * * * * cd /path/to/runner-cleanup && bash run.sh
+```cron
+0 3 * * * cd /path/to/runner-cleanup && bash run.sh
 ```
 
-确认后再启用真实清理：
+推荐模型：
 
-```bash
-0 3 * * * cd /path/to/runner-cleanup && ENABLE_LOCAL_CACHE_CLEANUP=1 DRY_RUN=0 bash run.sh
-```
+- 手工执行使用脚本默认值，因此 `bash run.sh` 默认就是 dry-run 观察。
+- cron 也执行同样的 `bash run.sh`，但该主机部署的 `runner-cleanup.conf` 决定实际运行模式。
+- 在生产 runner 主机上，只有在人工检查过手工 dry-run 输出之后，才把部署配置里的 `DRY_RUN` 改成 `0`。
 
 ## 说明
 

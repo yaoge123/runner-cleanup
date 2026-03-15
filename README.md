@@ -75,7 +75,7 @@ The settings below are the ones operators are expected to change. They come from
 | `KEEP_MAX_IMAGES` | `5` in `run.sh` | `clean.sh` | Raise or lower Docker image retention per repository. |
 | `ENABLE_IMAGE_CLEANUP` | `1` in `run.sh` | `run.sh` -> `clean.sh` | Set to `0` if you do not want old Docker images removed. |
 | `ENABLE_DOCKER_CACHE_CLEANUP` | `1` in `run.sh` | `run.sh` -> `clear-docker-cache.sh` | Set to `0` if you do not want runner-managed Docker objects pruned. |
-| `ENABLE_LOCAL_CACHE_CLEANUP` | `0` in `run.sh` | `run.sh` -> `clear-runner-local-cache.sh` | Must be `1` to enable host local-cache cleanup. |
+| `ENABLE_LOCAL_CACHE_CLEANUP` | `1` in `run.sh` | `run.sh` -> `clear-runner-local-cache.sh` | Disable only if this host should skip local cache cleanup entirely. |
 | `RUNNER_CACHE_DIR` | `/cache` | `clear-runner-local-cache.sh` | Change only when the runner host stores local cache under another allowlisted path. |
 | `DRY_RUN` | `1` in `clear-runner-local-cache.sh` | `clear-runner-local-cache.sh` | Set to `0` only after validating candidate selection. |
 | `VERBOSE` | `1` in `clear-runner-local-cache.sh` | `clear-runner-local-cache.sh` | Set to `0` if you want less scan detail in logs. |
@@ -136,7 +136,7 @@ Defaults:
 KEEP_MAX_IMAGES=5
 ENABLE_IMAGE_CLEANUP=1
 ENABLE_DOCKER_CACHE_CLEANUP=1
-ENABLE_LOCAL_CACHE_CLEANUP=0
+ENABLE_LOCAL_CACHE_CLEANUP=1
 ```
 
 `run.sh` executes cleanup in this order:
@@ -194,22 +194,22 @@ com.gitlab.gitlab-runner.managed=true
 
 That keeps it focused on runner-created Docker resources instead of arbitrary user containers.
 
-To enable runner local cache cleanup in dry-run mode, set `ENABLE_LOCAL_CACHE_CLEANUP=1` either in `runner-cleanup.conf` or on the command line:
+Manual execution now defaults to observation mode: `run.sh` enables local cache cleanup by default, while `clear-runner-local-cache.sh` still defaults to `DRY_RUN=1`. So the safest first check is simply:
 
 ```bash
-ENABLE_LOCAL_CACHE_CLEANUP=1 bash run.sh
+bash run.sh
 ```
 
-To execute real `runner-*` cleanup while preserving the 48-hour activity window:
+To execute real `runner-*` cleanup manually while preserving the 48-hour activity window:
 
 ```bash
-ENABLE_LOCAL_CACHE_CLEANUP=1 DRY_RUN=0 bash run.sh
+DRY_RUN=0 bash run.sh
 ```
 
-If you only want a temporary override without editing the config file:
+If you only want a temporary one-off override without editing the config file:
 
 ```bash
-ENABLE_LOCAL_CACHE_CLEANUP=1 DRY_RUN=0 MAX_DELETE_GB_PER_RUN=20 bash run.sh
+DRY_RUN=0 MAX_DELETE_GB_PER_RUN=20 bash run.sh
 ```
 
 ## Local cache cleanup variables
@@ -250,17 +250,17 @@ TOP_N_LARGEST=20
 
 ## Cron example
 
-Start with dry-run for observation:
+For cron, keep the command plain and let `runner-cleanup.conf` decide whether the host runs in dry-run or real-cleanup mode:
 
-```bash
-0 * * * * cd /path/to/runner-cleanup && bash run.sh
+```cron
+0 3 * * * cd /path/to/runner-cleanup && bash run.sh
 ```
 
-After validation, enable real cleanup:
+Recommended model:
 
-```bash
-0 3 * * * cd /path/to/runner-cleanup && ENABLE_LOCAL_CACHE_CLEANUP=1 DRY_RUN=0 bash run.sh
-```
+- Manual execution uses script defaults, so `bash run.sh` is dry-run observation by default.
+- Cron also runs plain `bash run.sh`; the deployed `runner-cleanup.conf` on that host determines the actual mode.
+- On a production runner host, review manual dry-run output first, then set `DRY_RUN=0` in the deployed config when you are ready for real cleanup.
 
 ## Notes
 
