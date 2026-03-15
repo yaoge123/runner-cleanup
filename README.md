@@ -1,5 +1,7 @@
 # Runner Cleanup
 
+Chinese version: [`README.zh-CN.md`](README.zh-CN.md)
+
 Shell scripts for keeping GitLab Runner hosts clean without touching GitLab or runner server settings.
 
 ## What it does
