@@ -260,11 +260,19 @@ TOP_N_LARGEST=20
 - cron 也执行同样的 `bash run.sh`，但该主机部署的 `runner-cleanup.conf` 决定实际运行模式。
 - 在生产 runner 主机上，只有在人工检查过手工 dry-run 输出之后，才把部署配置里的 `DRY_RUN` 改成 `0`。
 
+当前 runner 主机的实际部署路径如下：
+
+- cron 条目：`/etc/cron.d/gitrunner`
+- 包装脚本：`/home/yaoge/docker/runner-cleanup.sh`
+- 部署配置：`/home/yaoge/docker/runner-cleanup.conf`
+- 日志文件：`/var/log/runner-cleanup/runner-cleanup.log`
+
 ## 说明
 
 - 运行脚本的用户需要有权限读取并删除目标缓存目录。
 - 正常情况下，文件日志由 `run.sh` 处理，cron 不需要额外做 shell 重定向。
 - 仓库中提供了 `logrotate` 示例配置：`logrotate/runner-cleanup`。
+- 在当前 runner 主机上，应该把这个示例安装为 `/etc/logrotate.d/runner-cleanup`，避免 `/var/log/runner-cleanup/runner-cleanup.log` 无限增长。
 - 删除工作区数据后，后续 Job 可能因为重新恢复缓存或重新构建而变慢。
 - 删除 archive 缓存仍然故意保持关闭状态。
 - 日志里的 `config=` 表示实际加载到的配置文件路径；如果没有加载配置文件，则显示 `none`。

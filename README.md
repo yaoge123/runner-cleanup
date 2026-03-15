@@ -262,11 +262,19 @@ Recommended model:
 - Cron also runs plain `bash run.sh`; the deployed `runner-cleanup.conf` on that host determines the actual mode.
 - On a production runner host, review manual dry-run output first, then set `DRY_RUN=0` in the deployed config when you are ready for real cleanup.
 
+Current deployment on the runner host uses these concrete paths:
+
+- Cron entry: `/etc/cron.d/gitrunner`
+- Wrapper script: `/home/yaoge/docker/runner-cleanup.sh`
+- Deployed config: `/home/yaoge/docker/runner-cleanup.conf`
+- Log file: `/var/log/runner-cleanup/runner-cleanup.log`
+
 ## Notes
 
 - Run the scripts with permissions that can read and delete the target cache directories.
 - File logging is handled by `run.sh`; cron no longer needs shell redirection for the normal case.
 - A sample `logrotate` config is provided in `logrotate/runner-cleanup`.
+- On the current runner host, install that sample as `/etc/logrotate.d/runner-cleanup` so `/var/log/runner-cleanup/runner-cleanup.log` does not grow without bound.
 - Removing workspace data can make the next job slower due to cache restore or rebuild.
 - Removing archive cache is intentionally left disabled in the first version.
 - `config=` in the log reflects the actual config file that was loaded, or `none` when no config file was found.
