@@ -48,11 +48,24 @@ DRY_RUN="${DRY_RUN:-1}"
 run_or_print() {
   if [ "${DRY_RUN}" = "1" ]; then
     printf 'DRY_RUN=1 would run:'
-    printf ' %s' "$@"
+    printf ' %q' "$@"
     printf '\n'
   else
     "$@"
   fi
+}
+
+container_args() {
+  local containers=$1
+  local -n result_ref=$2
+
+  result_ref=()
+
+  while IFS= read -r container; do
+    if [ -n "${container}" ]; then
+      result_ref+=("${container}")
+    fi
+  done <<< "${containers}"
 }
 
 case "$COMMAND" in
@@ -70,7 +83,8 @@ case "$COMMAND" in
                   --filter="$FILTER_FLAG")
 
       if [ -n "${CONTAINERS}" ]; then
-        run_or_print docker rm "${CONTAINERS}"
+        container_args "${CONTAINERS}" CONTAINER_ARGS
+        run_or_print docker rm "${CONTAINER_ARGS[@]}"
       fi
     else
       run_or_print env DOCKER_API_VERSION=$PRUNE_DOCKER_API_VERSION docker system prune -af --filter "$FILTER_FLAG"
@@ -111,7 +125,8 @@ case "$COMMAND" in
                     --filter="$FILTER_FLAG")
 
         if [ -n "${CONTAINERS}" ]; then
-          run_or_print docker rm -v "${CONTAINERS}"
+          container_args "${CONTAINERS}" CONTAINER_ARGS
+          run_or_print docker rm -v "${CONTAINER_ARGS[@]}"
         fi
 
         exit 0

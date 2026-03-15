@@ -4,7 +4,7 @@
 
 ## 功能概览
 
-- 删除旧 Docker 镜像，并为每个仓库保留最新的 `KEEP_MAX_IMAGES` 个镜像。
+- 删除旧 Docker 镜像，并为每个仓库保留最新的 `KEEP_MAX_IMAGES` 个唯一镜像 ID。
 - 执行 GitLab Runner 管理的 Docker 容器与卷清理。
 - 扫描并清理主机上 `runner-*` 目录下的本地 Runner 缓存。
 
@@ -155,7 +155,7 @@ ENABLE_IMAGE_CLEANUP=1
 ENABLE_DOCKER_CACHE_CLEANUP=1
 ```
 
-- `KEEP_MAX_IMAGES`：作为位置参数传给 `clean.sh`；对每个 Docker 仓库名，只保留最新的 `KEEP_MAX_IMAGES` 个镜像，删除更老的。
+- `KEEP_MAX_IMAGES`：作为位置参数传给 `clean.sh`；对每个 Docker 仓库名，只保留最新的 `KEEP_MAX_IMAGES` 个唯一镜像 ID，删除更老的。
 - `ENABLE_IMAGE_CLEANUP`：为 `1` 时执行 `clean.sh`；为 `0` 时完全跳过旧镜像清理。
 - `ENABLE_DOCKER_CACHE_CLEANUP`：为 `1` 时执行 `clear-docker-cache.sh`；为 `0` 时跳过 Runner 管理的 Docker 容器/卷清理。
 
@@ -163,7 +163,7 @@ ENABLE_DOCKER_CACHE_CLEANUP=1
 
 - 通过 `docker images --format '{{.Repository}}'` 枚举 Docker 仓库。
 - 是按“每个仓库”处理，而不是全局统一保留。
-- 会删除较老的镜像 ID，并为每个仓库名保留最新的 `KEEP_MAX_IMAGES` 个镜像。
+- 会删除较老的镜像 ID，并为每个仓库名保留最新的 `KEEP_MAX_IMAGES` 个唯一镜像 ID。
 - 使用 `docker rmi -f`，因此这一层比本地缓存清理更激进。
 
 ### `clear-docker-cache.sh`
@@ -274,6 +274,7 @@ TOP_N_LARGEST=20
 - 仓库中提供了 `logrotate` 示例配置：`logrotate/runner-cleanup`。
 - 在当前 runner 主机上，应该把这个示例安装为 `/etc/logrotate.d/runner-cleanup`，避免 `/var/log/runner-cleanup/runner-cleanup.log` 无限增长。
 - `DRY_RUN=1` 现在会保护三层清理；`clean.sh` 和 `clear-docker-cache.sh` 会打印“本来会执行的 Docker 命令”，而不会真正删除。
+- `run.sh` 现在会在启动日志里打印 `DRY_RUN` 和三层开关状态，便于直接从 cron 日志判断这次到底是观察模式还是实删模式。
 - 删除工作区数据后，后续 Job 可能因为重新恢复缓存或重新构建而变慢。
 - 删除 archive 缓存仍然故意保持关闭状态。
 - 日志里的 `config=` 表示实际加载到的配置文件路径；如果没有加载配置文件，则显示 `none`。

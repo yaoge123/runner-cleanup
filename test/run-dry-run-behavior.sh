@@ -28,6 +28,17 @@ assert_file_not_contains() {
   fi
 }
 
+assert_file_equals() {
+  local path=$1
+  local expected=$2
+
+  if [ "$(cat "${path}")" != "${expected}" ]; then
+    printf 'expected file to equal\nfile: %s\n--- actual ---\n%s\n--- expected ---\n%s\n' \
+      "${path}" "$(cat "${path}")" "${expected}" >&2
+    exit 1
+  fi
+}
+
 make_fake_repo() {
   local root=$1
 
@@ -92,6 +103,10 @@ EOF
 
   assert_file_contains "${log_file}" 'runner-cleanup start'
   assert_file_contains "${log_file}" "config=${config_file}"
+  assert_file_contains "${log_file}" 'DRY_RUN='
+  assert_file_contains "${log_file}" 'ENABLE_IMAGE_CLEANUP='
+  assert_file_contains "${log_file}" 'ENABLE_DOCKER_CACHE_CLEANUP='
+  assert_file_contains "${log_file}" 'ENABLE_LOCAL_CACHE_CLEANUP='
   assert_file_contains "${log_file}" 'runner-cleanup end exit_code=0'
 }
 
@@ -102,6 +117,7 @@ assert_file_contains "${DEFAULT_CALLS}" 'clean:1:7'
 assert_file_contains "${DEFAULT_CALLS}" 'docker:1'
 assert_file_contains "${DEFAULT_CALLS}" 'local:1'
 assert_file_not_contains "${DEFAULT_CALLS}" 'unset'
+assert_file_equals "${DEFAULT_CALLS}" $'clean:1:7\ndocker:1\nlocal:1'
 
 REAL_CALLS="${TMP_DIR}/real.calls"
 run_case "${TMP_DIR}/real" '0' "${REAL_CALLS}"
@@ -109,3 +125,4 @@ run_case "${TMP_DIR}/real" '0' "${REAL_CALLS}"
 assert_file_contains "${REAL_CALLS}" 'clean:0:7'
 assert_file_contains "${REAL_CALLS}" 'docker:0'
 assert_file_contains "${REAL_CALLS}" 'local:0'
+assert_file_equals "${REAL_CALLS}" $'clean:0:7\ndocker:0\nlocal:0'

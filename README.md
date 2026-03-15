@@ -6,7 +6,7 @@ Shell scripts for keeping GitLab Runner hosts clean without touching GitLab or r
 
 ## What it does
 
-- Removes old Docker images and keeps the latest `KEEP_MAX_IMAGES` entries per repository.
+- Removes old Docker images and keeps the latest `KEEP_MAX_IMAGES` unique image IDs per repository.
 - Runs GitLab Runner Docker cleanup for unused runner-managed containers and volumes.
 - Scans and cleans host-based runner local cache under `runner-*` directories.
 
@@ -157,7 +157,7 @@ ENABLE_IMAGE_CLEANUP=1
 ENABLE_DOCKER_CACHE_CLEANUP=1
 ```
 
-- `KEEP_MAX_IMAGES`: passed to `clean.sh` as a positional argument; for each Docker repository name, keep only the newest `KEEP_MAX_IMAGES` images and remove older ones.
+- `KEEP_MAX_IMAGES`: passed to `clean.sh` as a positional argument; for each Docker repository name, keep only the newest `KEEP_MAX_IMAGES` unique image IDs and remove older ones.
 - `ENABLE_IMAGE_CLEANUP`: when `1`, run `clean.sh`; when `0`, skip old-image cleanup completely.
 - `ENABLE_DOCKER_CACHE_CLEANUP`: when `1`, run `clear-docker-cache.sh`; when `0`, skip runner-managed Docker container/volume cleanup.
 
@@ -165,7 +165,7 @@ ENABLE_DOCKER_CACHE_CLEANUP=1
 
 - Enumerates Docker repositories with `docker images --format '{{.Repository}}'`.
 - Works per repository, not globally across all images.
-- Removes older image IDs and keeps the newest `KEEP_MAX_IMAGES` entries for each repository name.
+- Removes older image IDs and keeps the newest `KEEP_MAX_IMAGES` unique image IDs for each repository name.
 - Uses `docker rmi -f`, so this layer is more aggressive than the local cache cleanup.
 
 ### `clear-docker-cache.sh`
@@ -276,6 +276,7 @@ Current deployment on the runner host uses these concrete paths:
 - A sample `logrotate` config is provided in `logrotate/runner-cleanup`.
 - On the current runner host, install that sample as `/etc/logrotate.d/runner-cleanup` so `/var/log/runner-cleanup/runner-cleanup.log` does not grow without bound.
 - `DRY_RUN=1` now protects all three cleanup layers; `clean.sh` and `clear-docker-cache.sh` print the Docker commands they would run instead of deleting anything.
+- `run.sh` now logs `DRY_RUN` plus all three layer enable flags at startup so cron logs show the effective execution mode immediately.
 - Removing workspace data can make the next job slower due to cache restore or rebuild.
 - Removing archive cache is intentionally left disabled in the first version.
 - `config=` in the log reflects the actual config file that was loaded, or `none` when no config file was found.
