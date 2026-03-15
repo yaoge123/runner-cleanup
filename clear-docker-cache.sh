@@ -43,6 +43,17 @@ if awk "BEGIN {exit !(\"$DOCKER_API_VERSION\" > \"1.41\")}"; then
 fi
 
 COMMAND="${1:-prune-volumes}"
+DRY_RUN="${DRY_RUN:-1}"
+
+run_or_print() {
+  if [ "${DRY_RUN}" = "1" ]; then
+    printf 'DRY_RUN=1 would run:'
+    printf ' %s' "$@"
+    printf '\n'
+  else
+    "$@"
+  fi
+}
 
 case "$COMMAND" in
 
@@ -59,10 +70,10 @@ case "$COMMAND" in
                   --filter="$FILTER_FLAG")
 
       if [ -n "${CONTAINERS}" ]; then
-        docker rm "${CONTAINERS}"
+        run_or_print docker rm "${CONTAINERS}"
       fi
     else
-      DOCKER_API_VERSION=$PRUNE_DOCKER_API_VERSION docker system prune -af --filter "$FILTER_FLAG"
+      run_or_print env DOCKER_API_VERSION=$PRUNE_DOCKER_API_VERSION docker system prune -af --filter "$FILTER_FLAG"
     fi
 
     exit 0
@@ -100,13 +111,13 @@ case "$COMMAND" in
                     --filter="$FILTER_FLAG")
 
         if [ -n "${CONTAINERS}" ]; then
-          docker rm -v "${CONTAINERS}"
+          run_or_print docker rm -v "${CONTAINERS}"
         fi
 
         exit 0
       fi
     fi
-    DOCKER_API_VERSION=$PRUNE_DOCKER_API_VERSION docker system prune "$VOLUMES_FLAG" -af --filter "$FILTER_FLAG"
+    run_or_print env DOCKER_API_VERSION=$PRUNE_DOCKER_API_VERSION docker system prune "$VOLUMES_FLAG" -af --filter "$FILTER_FLAG"
 
     exit 0
     ;;
