@@ -86,7 +86,6 @@ bash run.sh
 | `WORKSPACE_MAX_AGE_DAYS` | `7` | `clear-runner-local-cache.sh` | 工作区和重复副本的主要陈旧阈值。 |
 | `ACTIVE_WINDOW_HOURS` | `48` | `clear-runner-local-cache.sh` | 如果最近活跃目录需要保护更久，可调大。 |
 | `KEEP_WORKSPACE_COPIES` | `1` | `clear-runner-local-cache.sh` | 想为同一 `namespace/project + protection` 保留更多副本时调大。 |
-| `MAX_DELETE_GB_PER_RUN` | `10` | `clear-runner-local-cache.sh` | 想更保守就调低，想更快回收空间就调高。 |
 | `TOP_N_LARGEST` | `20` | `clear-runner-local-cache.sh` | 调整扫描输出中展示的最大路径数量。 |
 | `RUNNER_CLEANUP_CONFIG` | 未设置 | `load-config.sh`, `run.sh` | 用来指定明确的配置文件路径，而不是自动发现。 |
 | `RUNNER_CLEANUP_LOG_DIR` | `/var/log/runner-cleanup` | `run.sh` | 当默认日志目录不可写（例如本地非 root 测试）时覆盖。 |
@@ -204,12 +203,6 @@ bash run.sh
 DRY_RUN=0 bash run.sh
 ```
 
-如果只想临时一次性覆盖而不改配置文件：
-
-```bash
-DRY_RUN=0 MAX_DELETE_GB_PER_RUN=20 bash run.sh
-```
-
 ## 本地缓存清理配置
 
 `clear-runner-local-cache.sh` 支持以下环境变量：
@@ -232,7 +225,6 @@ TMP_MAX_AGE_DAYS=1
 WORKSPACE_MAX_AGE_DAYS=7
 ACTIVE_WINDOW_HOURS=48
 KEEP_WORKSPACE_COPIES=1
-MAX_DELETE_GB_PER_RUN=10
 TOP_N_LARGEST=20
 ```
 
@@ -244,7 +236,6 @@ TOP_N_LARGEST=20
 - `protected` 与非 `protected` 工作区分开处理。
 - 如果某个目录树内最新的文件或目录 mtime 仍在活跃窗口内，则该工作区被视为活跃。
 - 重复工作区清理会按 `namespace/project + protection` 保留最新的 `KEEP_WORKSPACE_COPIES` 份副本，同时仍遵守 `WORKSPACE_MAX_AGE_DAYS`。
-- 每次运行的删除总量受 `MAX_DELETE_GB_PER_RUN` 限制。
 
 ## Cron 示例
 

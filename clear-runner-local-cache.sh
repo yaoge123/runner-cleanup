@@ -23,13 +23,11 @@ TMP_MAX_AGE_DAYS=${TMP_MAX_AGE_DAYS:-1}
 WORKSPACE_MAX_AGE_DAYS=${WORKSPACE_MAX_AGE_DAYS:-7}
 ACTIVE_WINDOW_HOURS=${ACTIVE_WINDOW_HOURS:-48}
 KEEP_WORKSPACE_COPIES=${KEEP_WORKSPACE_COPIES:-1}
-MAX_DELETE_GB_PER_RUN=${MAX_DELETE_GB_PER_RUN:-10}
 TOP_N_LARGEST=${TOP_N_LARGEST:-20}
 
 ACTIVE_WINDOW_SECONDS=$((ACTIVE_WINDOW_HOURS * 3600))
 WORKSPACE_MAX_AGE_SECONDS=$((WORKSPACE_MAX_AGE_DAYS * 86400))
 TMP_MAX_AGE_SECONDS=$((TMP_MAX_AGE_DAYS * 86400))
-MAX_DELETE_BYTES=$((MAX_DELETE_GB_PER_RUN * 1024 * 1024 * 1024))
 NOW_TS=$(date +%s)
 
 WORK_DIR=$(mktemp -d)
@@ -46,7 +44,6 @@ ARCHIVE_COUNT=0
 RUNNER_DIR_COUNT=0
 TOTAL_DELETE_BYTES=0
 DELETED_COUNT=0
-SKIPPED_COUNT=0
 FAILED_COUNT=0
 
 cleanup() {
@@ -406,7 +403,6 @@ print_configuration() {
   printf 'WORKSPACE_MAX_AGE_DAYS=%s\n' "${WORKSPACE_MAX_AGE_DAYS}"
   printf 'ACTIVE_WINDOW_HOURS=%s\n' "${ACTIVE_WINDOW_HOURS}"
   printf 'KEEP_WORKSPACE_COPIES=%s\n' "${KEEP_WORKSPACE_COPIES}"
-  printf 'MAX_DELETE_GB_PER_RUN=%s\n' "${MAX_DELETE_GB_PER_RUN}"
 }
 
 print_summary() {
@@ -446,12 +442,6 @@ execute_candidates() {
   log "${title}"
 
   while IFS=$'\t' read -r label size mtime path; do
-    if [ $((TOTAL_DELETE_BYTES + size)) -gt "${MAX_DELETE_BYTES}" ]; then
-      SKIPPED_COUNT=$((SKIPPED_COUNT + 1))
-      log "Skipped due to MAX_DELETE_GB_PER_RUN: ${path}"
-      continue
-    fi
-
     if [ "${DRY_RUN}" = "1" ]; then
       TOTAL_DELETE_BYTES=$((TOTAL_DELETE_BYTES + size))
       log "Would remove ${label}: ${path} ($(bytes_to_human "${size}"))"
@@ -474,7 +464,6 @@ print_result() {
   printf 'dry_run=%s\n' "${DRY_RUN}"
   printf 'planned_or_reclaimed=%s\n' "$(bytes_to_human "${TOTAL_DELETE_BYTES}")"
   printf 'deleted=%s\n' "${DELETED_COUNT}"
-  printf 'skipped=%s\n' "${SKIPPED_COUNT}"
   printf 'failed=%s\n' "${FAILED_COUNT}"
 }
 

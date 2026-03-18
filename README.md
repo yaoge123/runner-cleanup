@@ -88,7 +88,6 @@ The settings below are the ones operators are expected to change. They come from
 | `WORKSPACE_MAX_AGE_DAYS` | `7` | `clear-runner-local-cache.sh` | Main stale threshold for workspace and duplicate cleanup. |
 | `ACTIVE_WINDOW_HOURS` | `48` | `clear-runner-local-cache.sh` | Increase if recently active trees should stay protected longer. |
 | `KEEP_WORKSPACE_COPIES` | `1` | `clear-runner-local-cache.sh` | Raise if you want to retain more duplicate copies per `namespace/project + protection`. |
-| `MAX_DELETE_GB_PER_RUN` | `10` | `clear-runner-local-cache.sh` | Lower for safer incremental cleanup, raise for faster reclamation. |
 | `TOP_N_LARGEST` | `20` | `clear-runner-local-cache.sh` | Adjust how many largest paths are shown in scan output. |
 | `RUNNER_CLEANUP_CONFIG` | unset | `load-config.sh`, `run.sh` | Point to a specific config file instead of auto-discovery. |
 | `RUNNER_CLEANUP_LOG_DIR` | `/var/log/runner-cleanup` | `run.sh` | Override when `/var/log/runner-cleanup` is not writable, such as local non-root tests. |
@@ -206,12 +205,6 @@ To execute real `runner-*` cleanup manually while preserving the 48-hour activit
 DRY_RUN=0 bash run.sh
 ```
 
-If you only want a temporary one-off override without editing the config file:
-
-```bash
-DRY_RUN=0 MAX_DELETE_GB_PER_RUN=20 bash run.sh
-```
-
 ## Local cache cleanup variables
 
 `clear-runner-local-cache.sh` supports these environment variables:
@@ -234,7 +227,6 @@ TMP_MAX_AGE_DAYS=1
 WORKSPACE_MAX_AGE_DAYS=7
 ACTIVE_WINDOW_HOURS=48
 KEEP_WORKSPACE_COPIES=1
-MAX_DELETE_GB_PER_RUN=10
 TOP_N_LARGEST=20
 ```
 
@@ -246,7 +238,6 @@ TOP_N_LARGEST=20
 - `protected` and unprotected workspaces are handled separately.
 - A workspace is treated as active when the newest file or directory mtime anywhere under that tree is within the active window.
 - Duplicate workspace cleanup keeps the newest `KEEP_WORKSPACE_COPIES` copies per `namespace/project + protection` and still respects `WORKSPACE_MAX_AGE_DAYS`.
-- Cleanup is capped by `MAX_DELETE_GB_PER_RUN`.
 
 ## Cron example
 
