@@ -37,6 +37,8 @@ DUPLICATE_REPORT_FILE="${WORK_DIR}/duplicate_report.tsv"
 SUMMARY_FILE="${WORK_DIR}/summary.txt"
 
 declare -A NEWEST_MTIME_CACHE=()
+declare -A SIZE_CACHE=()
+STATS_CACHE_FILE=""
 
 TMP_COUNT=0
 WORKSPACE_COUNT=0
@@ -101,74 +103,55 @@ get_mtime() {
   stat -c %Y "$1"
 }
 
-get_newest_mtime() {
+# Single Python walk returning "mtime size" — caches both values
+get_path_stats() {
   local path=$1
 
   if [ -n "${NEWEST_MTIME_CACHE[${path}]:-}" ]; then
-    printf '%s\n' "${NEWEST_MTIME_CACHE[${path}]}"
     return 0
   fi
 
-  local newest_mtime
-  newest_mtime=$(python3 - "$path" <<'PY'
-import os
-import sys
-
+  local result
+  result=$(python3 - "$path" <<'PY'
+import os, sys
 path = sys.argv[1]
-
 try:
-    root_stat = os.stat(path, follow_symlinks=False)
+    st = os.stat(path, follow_symlinks=False)
 except OSError:
-    print(0)
-    raise SystemExit(0)
-
-newest = int(root_stat.st_mtime)
-
+    print("0 0"); raise SystemExit(0)
+newest = int(st.st_mtime)
+size = 0 if os.path.isdir(path) else st.st_size
 if os.path.isdir(path):
     for base, dirs, files in os.walk(path):
         for name in dirs + files:
             child = os.path.join(base, name)
             try:
-                newest = max(newest, int(os.stat(child, follow_symlinks=False).st_mtime))
+                cst = os.stat(child, follow_symlinks=False)
+                newest = max(newest, int(cst.st_mtime))
+                if not os.path.isdir(child):
+                    size += cst.st_size
             except OSError:
                 pass
-
-print(newest)
+print(newest, size)
 PY
 )
 
-  NEWEST_MTIME_CACHE[${path}]="${newest_mtime}"
-  printf '%s\n' "${newest_mtime}"
+  local mtime size
+  IFS=' ' read -r mtime size <<< "${result}"
+  NEWEST_MTIME_CACHE[${path}]="${mtime}"
+  SIZE_CACHE[${path}]="${size}"
+}
+
+get_newest_mtime() {
+  local path=$1
+  get_path_stats "${path}"
+  printf '%s\n' "${NEWEST_MTIME_CACHE[${path}]}"
 }
 
 get_size() {
-  python3 - "$1" <<'PY'
-import os
-import sys
-
-path = sys.argv[1]
-
-def entry_size(target):
-    total = 0
-    try:
-        st = os.stat(target, follow_symlinks=False)
-    except OSError:
-        return 0
-
-    if not os.path.isdir(target):
-        return st.st_size
-
-    for base, dirs, files in os.walk(target):
-        for name in files:
-            child = os.path.join(base, name)
-            try:
-                total += os.stat(child, follow_symlinks=False).st_size
-            except OSError:
-                pass
-    return total
-
-print(entry_size(path))
-PY
+  local path=$1
+  get_path_stats "${path}"
+  printf '%s\n' "${SIZE_CACHE[${path}]}"
 }
 
 is_active() {
@@ -241,20 +224,10 @@ scan_workspace_candidates() {
 
   : > "${WORKSPACE_CANDIDATES_FILE}"
 
-  while IFS= read -r path; do
+  # Use Python to find leaf project directories under runner-*/hash/namespace[/subgroup]*/project
+  # This handles both depth-4 (runner/hash/ns/proj) and deeper paths (runner/hash/ns/sub/proj)
+  while IFS=$'\t' read -r path; do
     [ -n "${path}" ] || continue
-
-    case "$(basename "${path}")" in
-      *.tmp)
-        continue
-        ;;
-    esac
-
-    case "${path}" in
-      */.*|*/.*/**)
-        continue
-        ;;
-    esac
 
     if is_active "${path}"; then
       continue
@@ -268,7 +241,57 @@ scan_workspace_candidates() {
     size=$(get_size "${path}")
     mtime=$(get_newest_mtime "${path}")
     append_candidate "${WORKSPACE_CANDIDATES_FILE}" "WORKSPACE_REBUILDABLE" "${size}" "${mtime}" "${path}"
-  done < <(find "${RUNNER_CACHE_DIR}" -mindepth 4 -maxdepth 4 -type d -path "${RUNNER_CACHE_DIR}/runner-*/*/*/*" 2>/dev/null)
+  done < <(python3 - "${RUNNER_CACHE_DIR}" <<'PY'
+import os, sys
+
+root = sys.argv[1]
+
+for runner_dir in sorted(os.listdir(root)):
+    if not runner_dir.startswith("runner-"):
+        continue
+    runner_path = os.path.join(root, runner_dir)
+    if not os.path.isdir(runner_path):
+        continue
+    try:
+        level2_entries = os.listdir(runner_path)
+    except PermissionError:
+        continue
+    for level2 in level2_entries:
+        level2_path = os.path.join(runner_path, level2)
+        if not os.path.isdir(level2_path):
+            continue
+        # Walk namespace/subgroup tree to find leaf project dirs
+        # A "leaf project" is a dir whose children are NOT all directories
+        # (i.e., it contains files, or is the deepest meaningful dir)
+        def find_projects(base, depth=0):
+            try:
+                entries = os.listdir(base)
+            except PermissionError:
+                return
+            name = os.path.basename(base)
+            if name.startswith('.') or name.endswith('.tmp'):
+                return
+            # Check if this is a leaf: has any non-directory child, or has no subdirs
+            subdirs = []
+            has_files = False
+            for e in entries:
+                if e.startswith('.'):
+                    continue
+                ep = os.path.join(base, e)
+                if os.path.isdir(ep) and not e.endswith('.tmp'):
+                    subdirs.append(ep)
+                else:
+                    has_files = True
+            if depth >= 1 and (has_files or not subdirs):
+                # This is a leaf project directory
+                print(base)
+            else:
+                for sd in subdirs:
+                    find_projects(sd, depth + 1)
+
+        find_projects(level2_path)
+PY
+)
 }
 
 scan_duplicate_workspaces() {
@@ -278,7 +301,7 @@ scan_duplicate_workspaces() {
 
   : > "${DUPLICATE_REPORT_FILE}"
 
-  python3 - "${RUNNER_CACHE_DIR}" "${NOW_TS}" "${ACTIVE_WINDOW_SECONDS}" "${KEEP_WORKSPACE_COPIES}" "${ENABLE_DUPLICATE_WORKSPACE_CLEANUP}" "${WORKSPACE_MAX_AGE_SECONDS}" "${WORKSPACE_CANDIDATES_FILE}" "${DUPLICATE_REPORT_FILE}" "${ENABLE_DUPLICATE_WORKSPACE_REPORT}" <<'PY'
+  python3 - "${RUNNER_CACHE_DIR}" "${NOW_TS}" "${ACTIVE_WINDOW_SECONDS}" "${KEEP_WORKSPACE_COPIES}" "${ENABLE_DUPLICATE_WORKSPACE_CLEANUP}" "${WORKSPACE_MAX_AGE_SECONDS}" "${WORKSPACE_CANDIDATES_FILE}" "${DUPLICATE_REPORT_FILE}" "${ENABLE_DUPLICATE_WORKSPACE_REPORT}" "${STATS_CACHE_FILE:-}" <<'PY'
 import os
 import sys
 from collections import defaultdict
@@ -292,11 +315,27 @@ workspace_max_age = int(sys.argv[6])
 workspace_candidates_file = sys.argv[7]
 duplicate_report_file = sys.argv[8]
 enable_report = sys.argv[9] == "1"
+stats_cache_file = sys.argv[10] if len(sys.argv) > 10 else ""
+
+# Load pre-computed stats cache from bash layer
+_stats_cache = {}
+if stats_cache_file and os.path.isfile(stats_cache_file):
+    with open(stats_cache_file, "r") as f:
+        for line in f:
+            line = line.rstrip("\n")
+            if not line:
+                continue
+            parts = line.split("\t", 2)
+            if len(parts) == 3:
+                _stats_cache[parts[0]] = (int(parts[1]), int(parts[2]))
 
 groups = defaultdict(list)
 
 
 def recursive_stats(path):
+    if path in _stats_cache:
+        return _stats_cache[path]
+
     try:
         root_stat = os.stat(path, follow_symlinks=False)
     except OSError:
@@ -319,6 +358,7 @@ def recursive_stats(path):
             if not os.path.isdir(child):
                 size += st.st_size
 
+    _stats_cache[path] = (newest, size)
     return newest, size
 
 for runner_dir in os.listdir(root):
@@ -459,12 +499,47 @@ execute_candidates() {
   done < <(awk -F '\t' '!seen[$4]++' "${file}" | sort -t $'\t' -k3,3n -k2,2nr -k4,4)
 }
 
+EMPTY_RUNNER_DIR_COUNT=0
+
+cleanup_empty_runner_dirs() {
+  log "Checking for empty runner directories"
+  local dir
+  while IFS= read -r dir; do
+    [ -n "${dir}" ] || continue
+    # A runner dir is "empty" if it has no files at all (only empty subdirs or nothing)
+    if [ -z "$(find "${dir}" -mindepth 1 -type f -print -quit 2>/dev/null)" ]; then
+      if [ "${DRY_RUN}" = "1" ]; then
+        log "Would remove empty runner dir: ${dir}"
+        EMPTY_RUNNER_DIR_COUNT=$((EMPTY_RUNNER_DIR_COUNT + 1))
+      else
+        if rm -rf -- "${dir}"; then
+          EMPTY_RUNNER_DIR_COUNT=$((EMPTY_RUNNER_DIR_COUNT + 1))
+          DELETED_COUNT=$((DELETED_COUNT + 1))
+          log "Removed empty runner dir: ${dir}"
+        else
+          FAILED_COUNT=$((FAILED_COUNT + 1))
+          log "Failed to remove empty runner dir: ${dir}"
+        fi
+      fi
+    fi
+  done < <(find "${RUNNER_CACHE_DIR}" -maxdepth 1 -mindepth 1 -type d -name 'runner-*' 2>/dev/null)
+}
+
 print_result() {
   log "Result"
   printf 'dry_run=%s\n' "${DRY_RUN}"
   printf 'planned_or_reclaimed=%s\n' "$(bytes_to_human "${TOTAL_DELETE_BYTES}")"
   printf 'deleted=%s\n' "${DELETED_COUNT}"
+  printf 'empty_runner_dirs=%s\n' "${EMPTY_RUNNER_DIR_COUNT}"
   printf 'failed=%s\n' "${FAILED_COUNT}"
+}
+
+export_stats_cache() {
+  STATS_CACHE_FILE="${WORK_DIR}/stats_cache.tsv"
+  : > "${STATS_CACHE_FILE}"
+  for path in "${!NEWEST_MTIME_CACHE[@]}"; do
+    printf '%s\t%s\t%s\n' "${path}" "${NEWEST_MTIME_CACHE[${path}]}" "${SIZE_CACHE[${path}]:-0}" >> "${STATS_CACHE_FILE}"
+  done
 }
 
 main() {
@@ -473,12 +548,14 @@ main() {
   scan_summary
   scan_tmp_candidates
   scan_workspace_candidates
+  export_stats_cache
   scan_duplicate_workspaces
   print_summary
   emit_candidates "${TMP_CANDIDATES_FILE}" "SAFE_TMP candidates"
   emit_candidates "${WORKSPACE_CANDIDATES_FILE}" "WORKSPACE_REBUILDABLE candidates"
   execute_candidates "${TMP_CANDIDATES_FILE}" "Executing SAFE_TMP cleanup"
   execute_candidates "${WORKSPACE_CANDIDATES_FILE}" "Executing WORKSPACE_REBUILDABLE cleanup"
+  cleanup_empty_runner_dirs
   print_result
 }
 
