@@ -39,6 +39,10 @@ The local cache cleanup script treats data in three classes:
 - `clear-runner-local-cache.sh`: host-based runner local cache scan and cleanup.
 - `logrotate/runner-cleanup`: sample logrotate policy for `/var/log/runner-cleanup/runner-cleanup.log`.
 - `test/run-logging-smoke.sh`: smoke test for built-in file logging.
+- `test/run-logging-behavior.sh`: verifies log path selection, config loading, and exit logging behavior.
+- `test/run-dry-run-behavior.sh`: verifies that `run.sh` passes a unified `DRY_RUN` mode to all three cleanup layers.
+- `test/docker-dry-run-behavior.sh`: verifies Docker image/container cleanup does not perform real deletion when `DRY_RUN=1`.
+- `test/clear-runner-local-cache-behavior.sh`: verifies active-window, duplicate-workspace, and local-cache scan behavior.
 - `runner-cleanup.conf.example`: sample configuration file.
 
 ## Usage

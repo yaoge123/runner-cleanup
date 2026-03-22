@@ -1,5 +1,7 @@
 # Runner Cleanup
 
+英文版：[`README.md`](README.md)
+
 用于清理 GitLab Runner 主机的 Shell 脚本集合，不修改 GitLab 或 Runner 服务端配置。
 
 ## 功能概览
@@ -37,6 +39,10 @@ Docker 侧清理与主机本地缓存清理不是一回事：
 - `clear-runner-local-cache.sh`：主机侧 Runner 本地缓存扫描与清理。
 - `logrotate/runner-cleanup`：`/var/log/runner-cleanup/runner-cleanup.log` 的示例 logrotate 策略。
 - `test/run-logging-smoke.sh`：内建文件日志的冒烟测试。
+- `test/run-logging-behavior.sh`：日志路径、配置加载与退出日志行为验证。
+- `test/run-dry-run-behavior.sh`：`run.sh` 对三层清理统一传递 `DRY_RUN` 的验证。
+- `test/docker-dry-run-behavior.sh`：Docker 镜像/容器清理在 `DRY_RUN=1` 下不真实删除的验证。
+- `test/clear-runner-local-cache-behavior.sh`：本地缓存活跃窗口、重复副本和扫描行为验证。
 - `runner-cleanup.conf.example`：配置文件示例。
 
 ## 使用方式
