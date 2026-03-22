@@ -88,7 +88,7 @@ The settings below are the ones operators are expected to change. They come from
 | `ENABLE_ARCHIVE_CLEANUP` | `0` | `clear-runner-local-cache.sh` | Reserved for future use; current code scans and counts archive files only. |
 | `TMP_MAX_AGE_DAYS` | `1` | `clear-runner-local-cache.sh` | Raise if tmp directories should survive longer before cleanup. |
 | `WORKSPACE_MAX_AGE_DAYS` | `7` | `clear-runner-local-cache.sh` | Main stale threshold for workspace cleanup. |
-| `TOP_N_LARGEST` | `20` | `clear-runner-local-cache.sh` | Adjust how many largest paths are shown in scan output. |
+| `TOP_N_LARGEST` | `10` | `clear-runner-local-cache.sh` | Adjust how many largest paths are shown in scan output. |
 | `RUNNER_CLEANUP_CONFIG` | unset | `load-config.sh`, `run.sh` | Point to a specific config file instead of auto-discovery. |
 | `RUNNER_CLEANUP_LOG_DIR` | `/var/log/runner-cleanup` | `run.sh` | Override when `/var/log/runner-cleanup` is not writable, such as local non-root tests. |
 | `RUNNER_CLEANUP_LOG_FILE` | `/var/log/runner-cleanup/runner-cleanup.log` | `run.sh` | Override when a different log file path is required. |
@@ -223,7 +223,7 @@ ENABLE_ARCHIVE_CLEANUP=0
 
 TMP_MAX_AGE_DAYS=1
 WORKSPACE_MAX_AGE_DAYS=7
-TOP_N_LARGEST=20
+TOP_N_LARGEST=10
 ```
 
 ## Safety model

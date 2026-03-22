@@ -88,7 +88,7 @@ bash run.sh
 | `ENABLE_ARCHIVE_CLEANUP` | `0` | `clear-runner-local-cache.sh` | 预留给未来；当前代码只扫描和计数 archive 文件。 |
 | `TMP_MAX_AGE_DAYS` | `1` | `clear-runner-local-cache.sh` | 想让 tmp 目录保留更久时调大。 |
 | `WORKSPACE_MAX_AGE_DAYS` | `7` | `clear-runner-local-cache.sh` | 工作区的主要陈旧阈值。 |
-| `TOP_N_LARGEST` | `20` | `clear-runner-local-cache.sh` | 调整扫描输出中展示的最大路径数量。 |
+| `TOP_N_LARGEST` | `10` | `clear-runner-local-cache.sh` | 调整扫描输出中展示的最大路径数量。 |
 | `RUNNER_CLEANUP_CONFIG` | 未设置 | `load-config.sh`, `run.sh` | 用来指定明确的配置文件路径，而不是自动发现。 |
 | `RUNNER_CLEANUP_LOG_DIR` | `/var/log/runner-cleanup` | `run.sh` | 当默认日志目录不可写（例如本地非 root 测试）时覆盖。 |
 | `RUNNER_CLEANUP_LOG_FILE` | `/var/log/runner-cleanup/runner-cleanup.log` | `run.sh` | 当需要写入不同日志文件时覆盖。 |
@@ -223,7 +223,7 @@ ENABLE_ARCHIVE_CLEANUP=0
 
 TMP_MAX_AGE_DAYS=1
 WORKSPACE_MAX_AGE_DAYS=7
-TOP_N_LARGEST=20
+TOP_N_LARGEST=10
 ```
 
 ## 安全模型
