@@ -383,6 +383,7 @@ print_result() {
   printf 'deleted=%s\n' "${DELETED_COUNT}"
   printf 'empty_runner_dirs=%s\n' "${EMPTY_RUNNER_DIR_COUNT}"
   printf 'failed=%s\n' "${FAILED_COUNT}"
+  log "SUMMARY dry_run=${DRY_RUN} reclaimed=$(bytes_to_human "${TOTAL_DELETE_BYTES}") deleted=${DELETED_COUNT} empty_dirs=${EMPTY_RUNNER_DIR_COUNT} failed=${FAILED_COUNT} runner_dirs=${RUNNER_DIR_COUNT} tmp_dirs=${TMP_COUNT}"
 }
 
 
