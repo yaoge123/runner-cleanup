@@ -19,10 +19,8 @@ ENABLE_ARCHIVE_CLEANUP=${ENABLE_ARCHIVE_CLEANUP:-0}
 
 TMP_MAX_AGE_DAYS=${TMP_MAX_AGE_DAYS:-1}
 WORKSPACE_MAX_AGE_DAYS=${WORKSPACE_MAX_AGE_DAYS:-7}
-ACTIVE_WINDOW_HOURS=${ACTIVE_WINDOW_HOURS:-48}
 TOP_N_LARGEST=${TOP_N_LARGEST:-20}
 
-ACTIVE_WINDOW_SECONDS=$((ACTIVE_WINDOW_HOURS * 3600))
 WORKSPACE_MAX_AGE_SECONDS=$((WORKSPACE_MAX_AGE_DAYS * 86400))
 TMP_MAX_AGE_SECONDS=$((TMP_MAX_AGE_DAYS * 86400))
 NOW_TS=$(date +%s)
@@ -149,13 +147,6 @@ get_size() {
   printf '%s\n' "${SIZE_CACHE[${path}]}"
 }
 
-is_active() {
-  local path=$1
-  local mtime
-  mtime=$(get_newest_mtime "${path}")
-  [ $((NOW_TS - mtime)) -lt "${ACTIVE_WINDOW_SECONDS}" ]
-}
-
 is_older_than() {
   local path=$1
   local threshold_seconds=$2
@@ -194,10 +185,6 @@ scan_tmp_candidates() {
   while IFS= read -r path; do
     [ -n "${path}" ] || continue
 
-    if is_active "${path}"; then
-      continue
-    fi
-
     local size mtime label
     size=$(get_size "${path}")
     mtime=$(get_newest_mtime "${path}")
@@ -223,10 +210,6 @@ scan_workspace_candidates() {
   # This handles both depth-4 (runner/hash/ns/proj) and deeper paths (runner/hash/ns/sub/proj)
   while IFS=$'\t' read -r path; do
     [ -n "${path}" ] || continue
-
-    if is_active "${path}"; then
-      continue
-    fi
 
     if ! is_older_than "${path}" "${WORKSPACE_MAX_AGE_SECONDS}"; then
       continue
@@ -300,7 +283,6 @@ print_configuration() {
   printf 'ENABLE_ARCHIVE_CLEANUP=%s\n' "${ENABLE_ARCHIVE_CLEANUP}"
   printf 'TMP_MAX_AGE_DAYS=%s\n' "${TMP_MAX_AGE_DAYS}"
   printf 'WORKSPACE_MAX_AGE_DAYS=%s\n' "${WORKSPACE_MAX_AGE_DAYS}"
-  printf 'ACTIVE_WINDOW_HOURS=%s\n' "${ACTIVE_WINDOW_HOURS}"
 }
 
 print_summary() {
