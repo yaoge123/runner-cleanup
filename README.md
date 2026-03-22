@@ -42,7 +42,7 @@ The local cache cleanup script treats data in three classes:
 - `test/run-logging-behavior.sh`: verifies log path selection, config loading, and exit logging behavior.
 - `test/run-dry-run-behavior.sh`: verifies that `run.sh` passes a unified `DRY_RUN` mode to all three cleanup layers.
 - `test/docker-dry-run-behavior.sh`: verifies Docker image/container cleanup does not perform real deletion when `DRY_RUN=1`.
-- `test/clear-runner-local-cache-behavior.sh`: verifies active-window, duplicate-workspace, and local-cache scan behavior.
+- `test/clear-runner-local-cache-behavior.sh`: verifies active-window and local-cache scan behavior.
 - `runner-cleanup.conf.example`: sample configuration file.
 
 ## Usage
@@ -85,13 +85,10 @@ The settings below are the ones operators are expected to change. They come from
 | `VERBOSE` | `1` in `clear-runner-local-cache.sh` | `clear-runner-local-cache.sh` | Set to `0` if you want less scan detail in logs. |
 | `ENABLE_TMP_CLEANUP` | `1` | `clear-runner-local-cache.sh` | Set to `0` to leave `*.tmp` directories untouched. |
 | `ENABLE_WORKSPACE_CLEANUP` | `1` | `clear-runner-local-cache.sh` | Set to `0` to disable stale workspace deletion. |
-| `ENABLE_DUPLICATE_WORKSPACE_REPORT` | `1` | `clear-runner-local-cache.sh` | Set to `0` to skip duplicate-group reporting. |
-| `ENABLE_DUPLICATE_WORKSPACE_CLEANUP` | `1` | `clear-runner-local-cache.sh` | Set to `0` to keep duplicate workspaces even if they are stale. |
 | `ENABLE_ARCHIVE_CLEANUP` | `0` | `clear-runner-local-cache.sh` | Reserved for future use; current code scans and counts archive files only. |
 | `TMP_MAX_AGE_DAYS` | `1` | `clear-runner-local-cache.sh` | Raise if tmp directories should survive longer before cleanup. |
-| `WORKSPACE_MAX_AGE_DAYS` | `7` | `clear-runner-local-cache.sh` | Main stale threshold for workspace and duplicate cleanup. |
+| `WORKSPACE_MAX_AGE_DAYS` | `7` | `clear-runner-local-cache.sh` | Main stale threshold for workspace cleanup. |
 | `ACTIVE_WINDOW_HOURS` | `48` | `clear-runner-local-cache.sh` | Increase if recently active trees should stay protected longer. |
-| `KEEP_WORKSPACE_COPIES` | `1` | `clear-runner-local-cache.sh` | Raise if you want to retain more duplicate copies per `namespace/project + protection`. |
 | `TOP_N_LARGEST` | `20` | `clear-runner-local-cache.sh` | Adjust how many largest paths are shown in scan output. |
 | `RUNNER_CLEANUP_CONFIG` | unset | `load-config.sh`, `run.sh` | Point to a specific config file instead of auto-discovery. |
 | `RUNNER_CLEANUP_LOG_DIR` | `/var/log/runner-cleanup` | `run.sh` | Override when `/var/log/runner-cleanup` is not writable, such as local non-root tests. |
@@ -223,14 +220,11 @@ RUNNER_CLEANUP_LOG_FILE=/var/log/runner-cleanup/runner-cleanup.log
 
 ENABLE_TMP_CLEANUP=1
 ENABLE_WORKSPACE_CLEANUP=1
-ENABLE_DUPLICATE_WORKSPACE_REPORT=1
-ENABLE_DUPLICATE_WORKSPACE_CLEANUP=1
 ENABLE_ARCHIVE_CLEANUP=0
 
 TMP_MAX_AGE_DAYS=1
 WORKSPACE_MAX_AGE_DAYS=7
 ACTIVE_WINDOW_HOURS=48
-KEEP_WORKSPACE_COPIES=1
 TOP_N_LARGEST=20
 ```
 
@@ -241,7 +235,6 @@ TOP_N_LARGEST=20
 - `cache.zip` archive files are scanned and counted, but not removed by default.
 - `protected` and unprotected workspaces are handled separately.
 - A workspace is treated as active when the newest file or directory mtime anywhere under that tree is within the active window.
-- Duplicate workspace cleanup keeps the newest `KEEP_WORKSPACE_COPIES` copies per `namespace/project + protection` and still respects `WORKSPACE_MAX_AGE_DAYS`.
 
 ## Cron example
 
