@@ -85,7 +85,7 @@ bash run.sh
 | `VERBOSE` | `clear-runner-local-cache.sh` 中为 `1` | `clear-runner-local-cache.sh` | 如果想减少日志输出，可设为 `0`。 |
 | `ENABLE_TMP_CLEANUP` | `1` | `clear-runner-local-cache.sh` | 如果不想动 `*.tmp` 目录，设为 `0`。 |
 | `ENABLE_WORKSPACE_CLEANUP` | `1` | `clear-runner-local-cache.sh` | 如果不想删陈旧工作区，设为 `0`。 |
-| `ENABLE_ARCHIVE_CLEANUP` | `0` | `clear-runner-local-cache.sh` | 设为 `1` 可删除超过 `ARCHIVE_MAX_AGE_DAYS` 的 `cache.zip` 文件。 |
+| `ENABLE_ARCHIVE_CLEANUP` | `1` | `clear-runner-local-cache.sh` | 删除超过 `ARCHIVE_MAX_AGE_DAYS` 的 `cache.zip` 文件。设为 `0` 可关闭。 |
 | `TMP_MAX_AGE_DAYS` | `1` | `clear-runner-local-cache.sh` | 想让 tmp 目录保留更久时调大。 |
 | `WORKSPACE_MAX_AGE_DAYS` | `7` | `clear-runner-local-cache.sh` | 工作区的主要陈旧阈值。 |
 | `ARCHIVE_MAX_AGE_DAYS` | `30` | `clear-runner-local-cache.sh` | `cache.zip` 归档保留天数；仅在 `ENABLE_ARCHIVE_CLEANUP=1` 时生效。 |
@@ -220,7 +220,7 @@ RUNNER_CLEANUP_LOG_FILE=/var/log/runner-cleanup/runner-cleanup.log
 
 ENABLE_TMP_CLEANUP=1
 ENABLE_WORKSPACE_CLEANUP=1
-ENABLE_ARCHIVE_CLEANUP=0
+ENABLE_ARCHIVE_CLEANUP=1
 
 TMP_MAX_AGE_DAYS=1
 WORKSPACE_MAX_AGE_DAYS=7
@@ -258,7 +258,7 @@ TOP_N_LARGEST=10
 - `DRY_RUN=1` 现在会保护三层清理；`clean.sh` 和 `clear-docker-cache.sh` 会打印“本来会执行的 Docker 命令”，而不会真正删除。
 - `run.sh` 现在会在启动日志里打印 `DRY_RUN` 和三层开关状态，便于直接从 cron 日志判断这次到底是观察模式还是实删模式。
 - 删除工作区数据后，后续 Job 可能因为重新恢复缓存或重新构建而变慢。
-- 删除 archive 缓存（`cache.zip`）默认关闭（`ENABLE_ARCHIVE_CLEANUP=0`）。启用后只删除 mtime 超过 `ARCHIVE_MAX_AGE_DAYS`（默认 30 天）的归档。删除归档会导致对应 cache key 的真正 CI 缓存未命中。
+- 删除 archive 缓存（`cache.zip`）默认开启（`ENABLE_ARCHIVE_CLEANUP=1`）。只删除 mtime 超过 `ARCHIVE_MAX_AGE_DAYS`（默认 30 天）的归档。删除归档会导致对应 cache key 的真正 CI 缓存未命中。
 - 日志里的 `config=` 表示实际加载到的配置文件路径；如果没有加载配置文件，则显示 `none`。
 
 ## 相关链接
