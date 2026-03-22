@@ -42,7 +42,7 @@ Docker 侧清理与主机本地缓存清理不是一回事：
 - `test/run-logging-behavior.sh`：日志路径、配置加载与退出日志行为验证。
 - `test/run-dry-run-behavior.sh`：`run.sh` 对三层清理统一传递 `DRY_RUN` 的验证。
 - `test/docker-dry-run-behavior.sh`：Docker 镜像/容器清理在 `DRY_RUN=1` 下不真实删除的验证。
-- `test/clear-runner-local-cache-behavior.sh`：本地缓存活跃窗口、重复副本和扫描行为验证。
+- `test/clear-runner-local-cache-behavior.sh`：本地缓存活跃窗口和扫描行为验证。
 - `runner-cleanup.conf.example`：配置文件示例。
 
 ## 使用方式
@@ -85,13 +85,10 @@ bash run.sh
 | `VERBOSE` | `clear-runner-local-cache.sh` 中为 `1` | `clear-runner-local-cache.sh` | 如果想减少日志输出，可设为 `0`。 |
 | `ENABLE_TMP_CLEANUP` | `1` | `clear-runner-local-cache.sh` | 如果不想动 `*.tmp` 目录，设为 `0`。 |
 | `ENABLE_WORKSPACE_CLEANUP` | `1` | `clear-runner-local-cache.sh` | 如果不想删陈旧工作区，设为 `0`。 |
-| `ENABLE_DUPLICATE_WORKSPACE_REPORT` | `1` | `clear-runner-local-cache.sh` | 如果不需要重复工作区报告，设为 `0`。 |
-| `ENABLE_DUPLICATE_WORKSPACE_CLEANUP` | `1` | `clear-runner-local-cache.sh` | 如果即使重复也不想自动删除陈旧副本，设为 `0`。 |
 | `ENABLE_ARCHIVE_CLEANUP` | `0` | `clear-runner-local-cache.sh` | 预留给未来；当前代码只扫描和计数 archive 文件。 |
 | `TMP_MAX_AGE_DAYS` | `1` | `clear-runner-local-cache.sh` | 想让 tmp 目录保留更久时调大。 |
-| `WORKSPACE_MAX_AGE_DAYS` | `7` | `clear-runner-local-cache.sh` | 工作区和重复副本的主要陈旧阈值。 |
+| `WORKSPACE_MAX_AGE_DAYS` | `7` | `clear-runner-local-cache.sh` | 工作区的主要陈旧阈值。 |
 | `ACTIVE_WINDOW_HOURS` | `48` | `clear-runner-local-cache.sh` | 如果最近活跃目录需要保护更久，可调大。 |
-| `KEEP_WORKSPACE_COPIES` | `1` | `clear-runner-local-cache.sh` | 想为同一 `namespace/project + protection` 保留更多副本时调大。 |
 | `TOP_N_LARGEST` | `20` | `clear-runner-local-cache.sh` | 调整扫描输出中展示的最大路径数量。 |
 | `RUNNER_CLEANUP_CONFIG` | 未设置 | `load-config.sh`, `run.sh` | 用来指定明确的配置文件路径，而不是自动发现。 |
 | `RUNNER_CLEANUP_LOG_DIR` | `/var/log/runner-cleanup` | `run.sh` | 当默认日志目录不可写（例如本地非 root 测试）时覆盖。 |
@@ -223,14 +220,11 @@ RUNNER_CLEANUP_LOG_FILE=/var/log/runner-cleanup/runner-cleanup.log
 
 ENABLE_TMP_CLEANUP=1
 ENABLE_WORKSPACE_CLEANUP=1
-ENABLE_DUPLICATE_WORKSPACE_REPORT=1
-ENABLE_DUPLICATE_WORKSPACE_CLEANUP=1
 ENABLE_ARCHIVE_CLEANUP=0
 
 TMP_MAX_AGE_DAYS=1
 WORKSPACE_MAX_AGE_DAYS=7
 ACTIVE_WINDOW_HOURS=48
-KEEP_WORKSPACE_COPIES=1
 TOP_N_LARGEST=20
 ```
 
@@ -241,7 +235,6 @@ TOP_N_LARGEST=20
 - `cache.zip` archive 文件只扫描和计数，默认不删除。
 - `protected` 与非 `protected` 工作区分开处理。
 - 如果某个目录树内最新的文件或目录 mtime 仍在活跃窗口内，则该工作区被视为活跃。
-- 重复工作区清理会按 `namespace/project + protection` 保留最新的 `KEEP_WORKSPACE_COPIES` 份副本，同时仍遵守 `WORKSPACE_MAX_AGE_DAYS`。
 
 ## Cron 示例
 

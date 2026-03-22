@@ -75,11 +75,8 @@ cat > "${CONFIG_FILE}" <<EOF
 RUNNER_CACHE_DIR=${CACHE_ROOT}
 ENABLE_TMP_CLEANUP=0
 ENABLE_WORKSPACE_CLEANUP=1
-ENABLE_DUPLICATE_WORKSPACE_REPORT=1
-ENABLE_DUPLICATE_WORKSPACE_CLEANUP=1
 WORKSPACE_MAX_AGE_DAYS=7
 ACTIVE_WINDOW_HOURS=48
-KEEP_WORKSPACE_COPIES=1
 EOF
 
 RUNNER_CLEANUP_CONFIG="${CONFIG_FILE}" . "${REPO_DIR}/clear-runner-local-cache.sh"
@@ -105,28 +102,20 @@ fi
 
 scan_summary
 scan_workspace_candidates
-scan_duplicate_workspaces
 
 assert_file_contains "${WORKSPACE_CANDIDATES_FILE}" "runner-a/hash-protected/ns/project-a"
 
 if grep -q 'runner-b/hash-protected/ns/project-a' "${WORKSPACE_CANDIDATES_FILE}"; then
-  printf 'duplicate cleanup should not delete a recent duplicate copy\n' >&2
+  printf 'active workspace should not become a cleanup candidate\n' >&2
   exit 1
 fi
 
 if grep -q 'runner-d/hash-protected/ns/project-a' "${WORKSPACE_CANDIDATES_FILE}"; then
-  printf 'duplicate cleanup should keep a non-active duplicate that is newer than WORKSPACE_MAX_AGE_DAYS\n' >&2
+  printf 'workspace newer than WORKSPACE_MAX_AGE_DAYS should not become a cleanup candidate\n' >&2
   exit 1
 fi
 
 if grep -q 'runner-c/hash-protected/ns/project-b' "${WORKSPACE_CANDIDATES_FILE}"; then
-  printf 'active non-duplicate workspace should not become a cleanup candidate\n' >&2
+  printf 'active workspace should not become a cleanup candidate\n' >&2
   exit 1
 fi
-
-: > "${WORKSPACE_CANDIDATES_FILE}"
-ENABLE_DUPLICATE_WORKSPACE_REPORT=0
-ENABLE_DUPLICATE_WORKSPACE_CLEANUP=1
-scan_duplicate_workspaces
-
-assert_file_contains "${WORKSPACE_CANDIDATES_FILE}" "runner-a/hash-protected/ns/project-a"
