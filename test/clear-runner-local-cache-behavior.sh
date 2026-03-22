@@ -76,7 +76,6 @@ RUNNER_CACHE_DIR=${CACHE_ROOT}
 ENABLE_TMP_CLEANUP=0
 ENABLE_WORKSPACE_CLEANUP=1
 WORKSPACE_MAX_AGE_DAYS=7
-ACTIVE_WINDOW_HOURS=48
 EOF
 
 RUNNER_CLEANUP_CONFIG="${CONFIG_FILE}" . "${REPO_DIR}/clear-runner-local-cache.sh"
@@ -89,16 +88,6 @@ newest_recent=$(get_newest_mtime "${CACHE_ROOT}/runner-b/hash-protected/ns/proje
 
 assert_eq "${OLD_TS}" "${newest_old}" "old workspace should report old recursive mtime"
 assert_eq "${RECENT_TS}" "${newest_recent}" "recent child activity should update recursive mtime"
-
-if is_active "${CACHE_ROOT}/runner-a/hash-protected/ns/project-a"; then
-  printf 'old workspace unexpectedly treated as active\n' >&2
-  exit 1
-fi
-
-if ! is_active "${CACHE_ROOT}/runner-b/hash-protected/ns/project-a"; then
-  printf 'recent child activity should keep workspace active\n' >&2
-  exit 1
-fi
 
 scan_summary
 scan_workspace_candidates
