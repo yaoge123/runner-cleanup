@@ -29,7 +29,7 @@ The local cache cleanup script treats data in three classes:
 
 - `SAFE_TMP`: temporary `*.tmp` directories, safe to remove.
 - `WORKSPACE_REBUILDABLE`: stale project workspaces under `runner-*`; removing them may cause archive re-extraction or a fresh clone/build, but does not delete archive cache.
-- `ARCHIVE_CACHE`: `cache.zip` files. These are scanned and counted in the first version and are not deleted by default.
+- `ARCHIVE_CACHE`: `cache.zip` files. When `ENABLE_ARCHIVE_CLEANUP=1`, archives older than `ARCHIVE_MAX_AGE_DAYS` (by mtime) are deleted.
 
 ## Files
 
@@ -85,9 +85,10 @@ The settings below are the ones operators are expected to change. They come from
 | `VERBOSE` | `1` in `clear-runner-local-cache.sh` | `clear-runner-local-cache.sh` | Set to `0` if you want less scan detail in logs. |
 | `ENABLE_TMP_CLEANUP` | `1` | `clear-runner-local-cache.sh` | Set to `0` to leave `*.tmp` directories untouched. |
 | `ENABLE_WORKSPACE_CLEANUP` | `1` | `clear-runner-local-cache.sh` | Set to `0` to disable stale workspace deletion. |
-| `ENABLE_ARCHIVE_CLEANUP` | `0` | `clear-runner-local-cache.sh` | Reserved for future use; current code scans and counts archive files only. |
+| `ENABLE_ARCHIVE_CLEANUP` | `0` | `clear-runner-local-cache.sh` | Set to `1` to delete `cache.zip` files older than `ARCHIVE_MAX_AGE_DAYS`. |
 | `TMP_MAX_AGE_DAYS` | `1` | `clear-runner-local-cache.sh` | Raise if tmp directories should survive longer before cleanup. |
 | `WORKSPACE_MAX_AGE_DAYS` | `7` | `clear-runner-local-cache.sh` | Main stale threshold for workspace cleanup. |
+| `ARCHIVE_MAX_AGE_DAYS` | `30` | `clear-runner-local-cache.sh` | Retention period for `cache.zip` archives; only effective when `ENABLE_ARCHIVE_CLEANUP=1`. |
 | `TOP_N_LARGEST` | `10` | `clear-runner-local-cache.sh` | Adjust how many largest paths are shown in scan output. |
 | `RUNNER_CLEANUP_CONFIG` | unset | `load-config.sh`, `run.sh` | Point to a specific config file instead of auto-discovery. |
 | `RUNNER_CLEANUP_LOG_DIR` | `/var/log/runner-cleanup` | `run.sh` | Override when `/var/log/runner-cleanup` is not writable, such as local non-root tests. |
@@ -223,6 +224,7 @@ ENABLE_ARCHIVE_CLEANUP=0
 
 TMP_MAX_AGE_DAYS=1
 WORKSPACE_MAX_AGE_DAYS=7
+ARCHIVE_MAX_AGE_DAYS=30
 TOP_N_LARGEST=10
 ```
 
@@ -230,7 +232,7 @@ TOP_N_LARGEST=10
 
 - Only allowlisted cache roots are accepted: `/cache`, `/home/gitlab-runner/cache`, `/var/lib/gitlab-runner/cache`.
 - The first version only cleans `runner-*` workspaces and `*.tmp` directories.
-- `cache.zip` archive files are scanned and counted, but not removed by default.
+- `cache.zip` archive files are scanned and counted; when `ENABLE_ARCHIVE_CLEANUP=1`, archives with mtime older than `ARCHIVE_MAX_AGE_DAYS` are deleted.
 - `protected` and unprotected workspaces are handled separately.
 - A workspace is treated as active when the newest file or directory mtime anywhere under that tree is within the active window.
 
@@ -256,7 +258,7 @@ Recommended model:
 - `DRY_RUN=1` now protects all three cleanup layers; `clean.sh` and `clear-docker-cache.sh` print the Docker commands they would run instead of deleting anything.
 - `run.sh` now logs `DRY_RUN` plus all three layer enable flags at startup so cron logs show the effective execution mode immediately.
 - Removing workspace data can make the next job slower due to cache restore or rebuild.
-- Removing archive cache is intentionally left disabled in the first version.
+- Removing archive cache (`cache.zip`) is disabled by default (`ENABLE_ARCHIVE_CLEANUP=0`). When enabled, only archives older than `ARCHIVE_MAX_AGE_DAYS` (default 30) are removed. Deleting an archive causes a real CI cache miss for that key.
 - `config=` in the log reflects the actual config file that was loaded, or `none` when no config file was found.
 
 ## Related

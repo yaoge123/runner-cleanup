@@ -19,15 +19,18 @@ ENABLE_ARCHIVE_CLEANUP=${ENABLE_ARCHIVE_CLEANUP:-0}
 
 TMP_MAX_AGE_DAYS=${TMP_MAX_AGE_DAYS:-1}
 WORKSPACE_MAX_AGE_DAYS=${WORKSPACE_MAX_AGE_DAYS:-7}
+ARCHIVE_MAX_AGE_DAYS=${ARCHIVE_MAX_AGE_DAYS:-30}
 TOP_N_LARGEST=${TOP_N_LARGEST:-10}
 
 WORKSPACE_MAX_AGE_SECONDS=$((WORKSPACE_MAX_AGE_DAYS * 86400))
 TMP_MAX_AGE_SECONDS=$((TMP_MAX_AGE_DAYS * 86400))
+ARCHIVE_MAX_AGE_SECONDS=$((ARCHIVE_MAX_AGE_DAYS * 86400))
 NOW_TS=$(date +%s)
 
 WORK_DIR=$(mktemp -d)
 TMP_CANDIDATES_FILE="${WORK_DIR}/tmp_candidates.tsv"
 WORKSPACE_CANDIDATES_FILE="${WORK_DIR}/workspace_candidates.tsv"
+ARCHIVE_CANDIDATES_FILE="${WORK_DIR}/archive_candidates.tsv"
 SUMMARY_FILE="${WORK_DIR}/summary.txt"
 
 declare -A NEWEST_MTIME_CACHE=()
@@ -272,7 +275,24 @@ PY
 )
 }
 
+scan_archive_candidates() {
+  [ "${ENABLE_ARCHIVE_CLEANUP}" = "1" ] || return 0
 
+  : > "${ARCHIVE_CANDIDATES_FILE}"
+
+  while IFS= read -r path; do
+    [ -n "${path}" ] || continue
+
+    local mtime size
+    mtime=$(stat -c %Y "${path}" 2>/dev/null) || continue
+    size=$(stat -c %s "${path}" 2>/dev/null) || continue
+
+    local age=$((NOW_TS - mtime))
+    if [ "${age}" -gt "${ARCHIVE_MAX_AGE_SECONDS}" ]; then
+      append_candidate "${ARCHIVE_CANDIDATES_FILE}" "ARCHIVE_CACHE" "${size}" "${mtime}" "${path}"
+    fi
+  done < <(find "${RUNNER_CACHE_DIR}" -type f -name 'cache.zip' 2>/dev/null || true)
+}
 
 print_configuration() {
   log "Configuration"
@@ -283,6 +303,7 @@ print_configuration() {
   printf 'ENABLE_ARCHIVE_CLEANUP=%s\n' "${ENABLE_ARCHIVE_CLEANUP}"
   printf 'TMP_MAX_AGE_DAYS=%s\n' "${TMP_MAX_AGE_DAYS}"
   printf 'WORKSPACE_MAX_AGE_DAYS=%s\n' "${WORKSPACE_MAX_AGE_DAYS}"
+  printf 'ARCHIVE_MAX_AGE_DAYS=%s\n' "${ARCHIVE_MAX_AGE_DAYS}"
 }
 
 print_summary() {
@@ -375,11 +396,14 @@ main() {
   scan_summary
   scan_tmp_candidates
   scan_workspace_candidates
+  scan_archive_candidates
   print_summary
   emit_candidates "${TMP_CANDIDATES_FILE}" "SAFE_TMP candidates"
   emit_candidates "${WORKSPACE_CANDIDATES_FILE}" "WORKSPACE_REBUILDABLE candidates"
+  emit_candidates "${ARCHIVE_CANDIDATES_FILE}" "ARCHIVE_CACHE candidates"
   execute_candidates "${TMP_CANDIDATES_FILE}" "Executing SAFE_TMP cleanup"
   execute_candidates "${WORKSPACE_CANDIDATES_FILE}" "Executing WORKSPACE_REBUILDABLE cleanup"
+  execute_candidates "${ARCHIVE_CANDIDATES_FILE}" "Executing ARCHIVE_CACHE cleanup"
   cleanup_empty_runner_dirs
   print_result
 }
