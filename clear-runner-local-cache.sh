@@ -245,19 +245,22 @@ for runner_dir in sorted(os.listdir(root)):
         # A "leaf project" is a dir whose children are NOT all directories
         # (i.e., it contains files, or is the deepest meaningful dir)
         def find_projects(base, depth=0):
+            name = os.path.basename(base)
+            if name.endswith('.tmp'):
+                return
+            # Hidden dirs (e.g. .pnpm-store, .cargo): treat as leaf, do not recurse inside
+            if name.startswith('.'):
+                if depth >= 1:
+                    print(base)
+                return
             try:
                 entries = os.listdir(base)
             except PermissionError:
                 return
-            name = os.path.basename(base)
-            if name.startswith('.') or name.endswith('.tmp'):
-                return
-            # Check if this is a leaf: has any non-directory child, or has no subdirs
+            # Check if this is a leaf: has any non-directory child, or has no non-hidden subdirs
             subdirs = []
             has_files = False
             for e in entries:
-                if e.startswith('.'):
-                    continue
                 ep = os.path.join(base, e)
                 if os.path.isdir(ep) and not e.endswith('.tmp'):
                     subdirs.append(ep)
