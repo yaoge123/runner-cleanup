@@ -10,9 +10,10 @@ resolve_runner_cleanup_path() {
 }
 
 snapshot_runner_cleanup_env() {
-  local -n target_present=$1
-  local -n target_values=$2
   local var
+
+  RUNNER_CLEANUP_ENV_PRESENT=()
+  RUNNER_CLEANUP_ENV_VALUES=()
 
   for var in \
     KEEP_MAX_IMAGES \
@@ -33,19 +34,17 @@ snapshot_runner_cleanup_env() {
     RUNNER_CLEANUP_LOG_FILE \
     RUNNER_CLEANUP_LOGGING_INITIALIZED; do
     if [ "${!var+x}" = "x" ]; then
-      target_present[${var}]=1
-      target_values[${var}]="${!var}"
+      RUNNER_CLEANUP_ENV_PRESENT[${var}]=1
+      RUNNER_CLEANUP_ENV_VALUES[${var}]="${!var}"
     fi
   done
 }
 
 restore_runner_cleanup_env() {
-  local -n target_present=$1
-  local -n target_values=$2
   local var
 
-  for var in "${!target_present[@]}"; do
-    printf -v "${var}" '%s' "${target_values[${var}]}"
+  for var in "${!RUNNER_CLEANUP_ENV_PRESENT[@]}"; do
+    printf -v "${var}" '%s' "${RUNNER_CLEANUP_ENV_VALUES[${var}]}"
     export "${var}"
   done
 }
@@ -53,8 +52,9 @@ restore_runner_cleanup_env() {
 load_runner_cleanup_config() {
   local script_dir=${1:-}
   local config_path=${RUNNER_CLEANUP_CONFIG:-}
-  local -A env_present=()
-  local -A env_values=()
+
+  declare -gA RUNNER_CLEANUP_ENV_PRESENT=()
+  declare -gA RUNNER_CLEANUP_ENV_VALUES=()
 
   if [ -z "${config_path}" ] && [ -n "${script_dir}" ] && [ -f "${script_dir}/runner-cleanup.conf" ]; then
     config_path="${script_dir}/runner-cleanup.conf"
@@ -71,11 +71,11 @@ load_runner_cleanup_config() {
     fi
 
     config_path=$(resolve_runner_cleanup_path "${config_path}")
-    snapshot_runner_cleanup_env env_present env_values
+    snapshot_runner_cleanup_env
 
     # shellcheck disable=SC1090
     . "${config_path}"
-    restore_runner_cleanup_env env_present env_values
+    restore_runner_cleanup_env
     export RUNNER_CLEANUP_LOADED_CONFIG="${config_path}"
   else
     unset RUNNER_CLEANUP_LOADED_CONFIG 2>/dev/null || true

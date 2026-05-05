@@ -114,3 +114,17 @@ PATH="${TMP_DIR}/bin:${PATH}" RUNNER_CLEANUP_TEST_DOCKER_LOG="${DOCKER_LOG}" RUN
 
 assert_file_contains "${OUTPUT_LOG}" 'DRY_RUN=1 would run: docker rm -v container-1 container-2'
 assert_file_not_contains "${DOCKER_LOG}" 'rm -v container-1'
+
+: > "${DOCKER_LOG}"
+set +e
+PATH="${TMP_DIR}/bin:${PATH}" RUNNER_CLEANUP_TEST_DOCKER_LOG="${DOCKER_LOG}" DRY_RUN=1 \
+  bash "${REPO_DIR}/clear-docker-cache.sh" typo-command > "${OUTPUT_LOG}" 2>&1
+invalid_exit_code=$?
+set -e
+
+if [ "${invalid_exit_code}" -eq 0 ]; then
+  printf 'invalid clear-docker-cache command should fail\n' >&2
+  exit 1
+fi
+
+assert_file_contains "${OUTPUT_LOG}" 'Usage:'

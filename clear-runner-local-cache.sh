@@ -12,6 +12,7 @@ load_runner_cleanup_config "${SCRIPT_DIR}"
 RUNNER_CACHE_DIR=${RUNNER_CACHE_DIR:-/cache}
 DRY_RUN=${DRY_RUN:-1}
 VERBOSE=${VERBOSE:-1}
+RUNNER_CACHE_DIR_ALLOWLIST=${RUNNER_CACHE_DIR_ALLOWLIST:-/cache:/home/gitlab-runner/cache:/var/lib/gitlab-runner/cache}
 
 ENABLE_TMP_CLEANUP=${ENABLE_TMP_CLEANUP:-1}
 ENABLE_WORKSPACE_CLEANUP=${ENABLE_WORKSPACE_CLEANUP:-1}
@@ -79,14 +80,16 @@ bytes_to_human() {
 }
 
 path_allowed() {
-  case "$1" in
-    /cache|/home/gitlab-runner/cache|/var/lib/gitlab-runner/cache)
+  local candidate
+  local IFS=':'
+
+  for candidate in ${RUNNER_CACHE_DIR_ALLOWLIST}; do
+    if [ "$1" = "${candidate}" ]; then
       return 0
-      ;;
-    *)
-      return 1
-      ;;
-  esac
+    fi
+  done
+
+  return 1
 }
 
 canonicalize_path() {
@@ -262,16 +265,15 @@ for runner_dir in sorted(os.listdir(root)):
         level2_path = os.path.join(runner_path, level2)
         if not os.path.isdir(level2_path):
             continue
-        # Walk namespace/subgroup tree to find leaf project dirs
-        # A "leaf project" is a dir whose children are NOT all directories
-        # (i.e., it contains files, or is the deepest meaningful dir)
+        # Walk namespace/subgroup tree to find leaf project dirs.
+        # Hidden dirs directly below the slot hash are standalone cache dirs; hidden
+        # dirs inside a workspace are workspace internals and must not be separate candidates.
         def find_projects(base, depth=0):
             name = os.path.basename(base)
             if name.endswith('.tmp'):
                 return
-            # Hidden dirs (e.g. .pnpm-store, .cargo): treat as leaf, do not recurse inside
             if name.startswith('.'):
-                if depth >= 1:
+                if depth == 0:
                     print(base)
                 return
             try:
@@ -283,6 +285,10 @@ for runner_dir in sorted(os.listdir(root)):
             has_files = False
             for e in entries:
                 ep = os.path.join(base, e)
+                if e.startswith('.'):
+                    if depth == 0 and os.path.isdir(ep):
+                        print(ep)
+                    continue
                 if os.path.isdir(ep) and not e.endswith('.tmp'):
                     subdirs.append(ep)
                 else:
@@ -320,6 +326,7 @@ scan_archive_candidates() {
 
 print_configuration() {
   log "Configuration"
+  printf 'config=%s\n' "${RUNNER_CLEANUP_LOADED_CONFIG:-none}"
   printf 'RUNNER_CACHE_DIR=%s\n' "${RUNNER_CACHE_DIR}"
   printf 'DRY_RUN=%s\n' "${DRY_RUN}"
   printf 'ENABLE_TMP_CLEANUP=%s\n' "${ENABLE_TMP_CLEANUP}"

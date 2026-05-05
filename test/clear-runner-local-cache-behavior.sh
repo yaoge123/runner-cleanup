@@ -29,6 +29,16 @@ assert_file_contains() {
   fi
 }
 
+assert_file_not_contains() {
+  local path=$1
+  local pattern=$2
+
+  if grep -q -- "${pattern}" "${path}"; then
+    printf 'expected file to not contain pattern\nfile: %s\npattern: %s\n' "${path}" "${pattern}" >&2
+    exit 1
+  fi
+}
+
 build_workspace_tree() {
   local root=$1
 
@@ -36,11 +46,15 @@ build_workspace_tree() {
   mkdir -p "${root}/runner-b/hash-protected/ns/project-a"
   mkdir -p "${root}/runner-d/hash-protected/ns/project-a"
   mkdir -p "${root}/runner-c/hash-protected/ns/project-b"
+  mkdir -p "${root}/runner-e/hash-protected/ns/project-c/.git"
+  mkdir -p "${root}/runner-f/hash-protected/.pnpm-store"
 
   printf 'old-a' > "${root}/runner-a/hash-protected/ns/project-a/file.txt"
   printf 'new-a' > "${root}/runner-b/hash-protected/ns/project-a/file.txt"
   printf 'mid-a' > "${root}/runner-d/hash-protected/ns/project-a/file.txt"
   printf 'new-b' > "${root}/runner-c/hash-protected/ns/project-b/file.txt"
+  printf 'new-git' > "${root}/runner-e/hash-protected/ns/project-c/.git/HEAD"
+  printf 'old-store' > "${root}/runner-f/hash-protected/.pnpm-store/store.txt"
 }
 
 set_mtime() {
@@ -70,41 +84,30 @@ set_mtime "${CACHE_ROOT}/runner-d/hash-protected/ns/project-a/file.txt" "${MID_T
 set_mtime "${CACHE_ROOT}/runner-c/hash-protected/ns/project-b" "${OLD_TS}"
 set_mtime "${CACHE_ROOT}/runner-c/hash-protected/ns/project-b/file.txt" "${RECENT_TS}"
 
+set_mtime "${CACHE_ROOT}/runner-e/hash-protected/ns/project-c" "${OLD_TS}"
+set_mtime "${CACHE_ROOT}/runner-e/hash-protected/ns/project-c/.git" "${OLD_TS}"
+set_mtime "${CACHE_ROOT}/runner-e/hash-protected/ns/project-c/.git/HEAD" "${RECENT_TS}"
+
+set_mtime "${CACHE_ROOT}/runner-f/hash-protected/.pnpm-store" "${OLD_TS}"
+set_mtime "${CACHE_ROOT}/runner-f/hash-protected/.pnpm-store/store.txt" "${OLD_TS}"
+
 CONFIG_FILE="${TMP_DIR}/runner-cleanup.conf"
 cat > "${CONFIG_FILE}" <<EOF
 RUNNER_CACHE_DIR=${CACHE_ROOT}
+RUNNER_CACHE_DIR_ALLOWLIST=${CACHE_ROOT}
 ENABLE_TMP_CLEANUP=0
 ENABLE_WORKSPACE_CLEANUP=1
 WORKSPACE_MAX_AGE_DAYS=7
 EOF
 
-RUNNER_CLEANUP_CONFIG="${CONFIG_FILE}" . "${REPO_DIR}/clear-runner-local-cache.sh"
+OUTPUT_LOG="${TMP_DIR}/output.log"
+RUNNER_CLEANUP_CONFIG="${CONFIG_FILE}" bash "${REPO_DIR}/clear-runner-local-cache.sh" > "${OUTPUT_LOG}"
 
-actual_config=${RUNNER_CLEANUP_LOADED_CONFIG:-}
-assert_eq "${CONFIG_FILE}" "${actual_config}" "loaded config path should be exported"
+assert_file_contains "${OUTPUT_LOG}" "config=${CONFIG_FILE}"
+assert_file_contains "${OUTPUT_LOG}" "runner-a/hash-protected/ns/project-a"
+assert_file_contains "${OUTPUT_LOG}" "runner-f/hash-protected/.pnpm-store"
 
-newest_old=$(get_newest_mtime "${CACHE_ROOT}/runner-a/hash-protected/ns/project-a")
-newest_recent=$(get_newest_mtime "${CACHE_ROOT}/runner-b/hash-protected/ns/project-a")
-
-assert_eq "${OLD_TS}" "${newest_old}" "old workspace should report old recursive mtime"
-assert_eq "${RECENT_TS}" "${newest_recent}" "recent child activity should update recursive mtime"
-
-scan_summary
-scan_workspace_candidates
-
-assert_file_contains "${WORKSPACE_CANDIDATES_FILE}" "runner-a/hash-protected/ns/project-a"
-
-if grep -q 'runner-b/hash-protected/ns/project-a' "${WORKSPACE_CANDIDATES_FILE}"; then
-  printf 'active workspace should not become a cleanup candidate\n' >&2
-  exit 1
-fi
-
-if grep -q 'runner-d/hash-protected/ns/project-a' "${WORKSPACE_CANDIDATES_FILE}"; then
-  printf 'workspace newer than WORKSPACE_MAX_AGE_DAYS should not become a cleanup candidate\n' >&2
-  exit 1
-fi
-
-if grep -q 'runner-c/hash-protected/ns/project-b' "${WORKSPACE_CANDIDATES_FILE}"; then
-  printf 'active workspace should not become a cleanup candidate\n' >&2
-  exit 1
-fi
+assert_file_not_contains "${OUTPUT_LOG}" 'runner-b/hash-protected/ns/project-a'
+assert_file_not_contains "${OUTPUT_LOG}" 'runner-d/hash-protected/ns/project-a'
+assert_file_not_contains "${OUTPUT_LOG}" 'runner-c/hash-protected/ns/project-b'
+assert_file_not_contains "${OUTPUT_LOG}" 'runner-e/hash-protected/ns/project-c/.git'

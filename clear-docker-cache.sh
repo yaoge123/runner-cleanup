@@ -59,13 +59,12 @@ run_or_print() {
 
 container_args() {
   local containers=$1
-  local -n result_ref=$2
 
-  result_ref=()
+  CONTAINER_ARGS=()
 
   while IFS= read -r container; do
     if [ -n "${container}" ]; then
-      result_ref+=("${container}")
+      CONTAINER_ARGS+=("${container}")
     fi
   done <<< "${containers}"
 }
@@ -125,6 +124,11 @@ case "$COMMAND" in
     ;;
 
   help)
+
+    usage
+    ;;
+
+  *)
 
     usage
     ;;

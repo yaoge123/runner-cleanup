@@ -29,11 +29,10 @@ runner_cleanup_finish() {
   printf '[%s] runner-cleanup end exit_code=%s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "${exit_code}"
 }
 
-BOOTSTRAP_LOG_DIR=${RUNNER_CLEANUP_LOG_DIR:-/var/log/runner-cleanup}
-BOOTSTRAP_LOG_FILE=${RUNNER_CLEANUP_LOG_FILE:-${BOOTSTRAP_LOG_DIR}/runner-cleanup.log}
-
-if [ "${RUNNER_CLEANUP_LOGGING_INITIALIZED:-0}" != "1" ]; then
-  setup_runner_cleanup_logging "${BOOTSTRAP_LOG_DIR}" "${BOOTSTRAP_LOG_FILE}"
+if [ "${RUNNER_CLEANUP_LOGGING_INITIALIZED:-0}" != "1" ] && [ -n "${RUNNER_CLEANUP_LOG_FILE:-}" ]; then
+  setup_runner_cleanup_logging \
+    "${RUNNER_CLEANUP_LOG_DIR:-$(dirname -- "${RUNNER_CLEANUP_LOG_FILE}")}" \
+    "${RUNNER_CLEANUP_LOG_FILE}"
 fi
 
 trap runner_cleanup_finish EXIT
@@ -42,17 +41,11 @@ trap runner_cleanup_finish EXIT
 . "${SCRIPT_DIR}/load-config.sh"
 load_runner_cleanup_config "${SCRIPT_DIR}"
 
-if [ "${RUNNER_CLEANUP_LOGGING_INITIALIZED:-0}" != "1" ]; then
-  setup_runner_cleanup_logging \
-    "${RUNNER_CLEANUP_LOG_DIR:-/var/log/runner-cleanup}" \
-    "${RUNNER_CLEANUP_LOG_FILE:-${RUNNER_CLEANUP_LOG_DIR:-/var/log/runner-cleanup}/runner-cleanup.log}"
-else
-  FINAL_LOG_DIR=${RUNNER_CLEANUP_LOG_DIR:-${BOOTSTRAP_LOG_DIR}}
-  FINAL_LOG_FILE=${RUNNER_CLEANUP_LOG_FILE:-${FINAL_LOG_DIR}/runner-cleanup.log}
+LOG_DIR=${RUNNER_CLEANUP_LOG_DIR:-/var/log/runner-cleanup}
+LOG_FILE=${RUNNER_CLEANUP_LOG_FILE:-${LOG_DIR}/runner-cleanup.log}
 
-  if [ "${FINAL_LOG_FILE}" != "${BOOTSTRAP_LOG_FILE}" ]; then
-    setup_runner_cleanup_logging "${FINAL_LOG_DIR}" "${FINAL_LOG_FILE}"
-  fi
+if [ "${RUNNER_CLEANUP_LOGGING_INITIALIZED:-0}" != "1" ]; then
+  setup_runner_cleanup_logging "${LOG_DIR}" "${LOG_FILE}"
 fi
 
 printf '[%s] runner-cleanup start\n' "$(date '+%Y-%m-%d %H:%M:%S')"
