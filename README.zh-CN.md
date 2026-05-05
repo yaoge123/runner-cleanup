@@ -6,7 +6,7 @@
 
 ## 功能概览
 
-- 删除旧 Docker 镜像，并为每个仓库保留最新的 `KEEP_MAX_IMAGES` 个唯一镜像 ID。
+- 只删除 dangling Docker 镜像；不会自动删除任何带 tag 的镜像。
 - 执行 GitLab Runner 管理的 Docker 容器与卷清理。
 - 扫描并清理主机上 `runner-*` 目录下的本地 Runner 缓存。
 
@@ -14,13 +14,14 @@
 
 `run.sh` 可以驱动三层彼此独立的清理逻辑：
 
-- `ENABLE_IMAGE_CLEANUP=1`：执行 `clean.sh` 清理旧 Docker 镜像。
+- `ENABLE_IMAGE_CLEANUP=1`：通过 `docker image prune -f` 执行只针对 dangling image 的镜像清理。
 - `ENABLE_DOCKER_CACHE_CLEANUP=1`：执行 `clear-docker-cache.sh` 清理 Runner 管理的 Docker 垃圾。
 - `ENABLE_LOCAL_CACHE_CLEANUP=1`：执行 `clear-runner-local-cache.sh` 清理主机上的 `runner-*` 缓存/工作区数据。
 
 Docker 侧清理与主机本地缓存清理不是一回事：
 
-- Docker 清理针对 GitLab Runner 管理的 Docker 对象，例如已停止容器和未使用卷。
+- 镜像清理只针对 dangling Docker image（`<none>:<none>`），不会删除 `ubuntu:20.04` 或 `node:18` 这类带 tag 的镜像。
+- Docker cache 清理针对 GitLab Runner 管理的 Docker 对象，例如已停止容器和未使用卷。
 - 本地缓存清理针对主机缓存目录里的文件，尤其是 `runner-*` 工作区和 `*.tmp` 目录。
 
 ## 本地缓存模型
@@ -34,7 +35,7 @@ Docker 侧清理与主机本地缓存清理不是一回事：
 ## 文件说明
 
 - `run.sh`：统一入口。
-- `clean.sh`：旧 Docker 镜像清理。
+- `clean.sh`：旧的按仓库删除旧镜像辅助脚本；`run.sh` 不再调用它。
 - `clear-docker-cache.sh`：Runner 管理的 Docker 容器/卷清理。
 - `clear-runner-local-cache.sh`：主机侧 Runner 本地缓存扫描与清理。
 - `logrotate/runner-cleanup`：`/var/log/runner-cleanup/runner-cleanup.log` 的示例 logrotate 策略。
@@ -76,8 +77,8 @@ bash run.sh
 
 | 变量 | 默认值 | 使用位置 | 何时调整 |
 | --- | --- | --- | --- |
-| `KEEP_MAX_IMAGES` | `run.sh` 中为 `5` | `clean.sh` | 调整每个 Docker 仓库保留的镜像数量。 |
-| `ENABLE_IMAGE_CLEANUP` | `run.sh` 中为 `1` | `run.sh` -> `clean.sh` | 如果不希望删除旧 Docker 镜像，设为 `0`。 |
+| `KEEP_MAX_IMAGES` | `run.sh` 中为 `5` | 仅供手工调用 `clean.sh` 时使用 | 旧的按仓库保留镜像设置；`run.sh` 不再使用它。 |
+| `ENABLE_IMAGE_CLEANUP` | `run.sh` 中为 `1` | `run.sh` -> `clear-docker-cache.sh image-prune` | 如果不希望删除 dangling Docker 镜像，设为 `0`；这一层永远不会删除 tagged image。 |
 | `ENABLE_DOCKER_CACHE_CLEANUP` | `run.sh` 中为 `1` | `run.sh` -> `clear-docker-cache.sh` | 如果不希望清理 Runner 管理的 Docker 对象，设为 `0`。 |
 | `ENABLE_LOCAL_CACHE_CLEANUP` | `run.sh` 中为 `1` | `run.sh` -> `clear-runner-local-cache.sh` | 只有在这台主机完全不需要本地缓存清理时才建议关闭。 |
 | `RUNNER_CACHE_DIR` | `/cache` | `clear-runner-local-cache.sh` | 仅在 Runner 本地缓存不在默认允许路径中时调整。 |
@@ -141,7 +142,7 @@ ENABLE_LOCAL_CACHE_CLEANUP=1
 
 `run.sh` 按如下顺序执行清理：
 
-1. `clean.sh "${KEEP_MAX_IMAGES}"`
+1. `clear-docker-cache.sh image-prune`
 2. `clear-docker-cache.sh`
 3. `clear-runner-local-cache.sh`
 
@@ -149,7 +150,7 @@ ENABLE_LOCAL_CACHE_CLEANUP=1
 
 ## Docker 清理配置
 
-`run.sh`、`clean.sh` 和 `clear-docker-cache.sh` 使用这些 Docker 相关配置：
+`run.sh` 和 `clear-docker-cache.sh` 使用这些 Docker 相关配置：
 
 ```bash
 KEEP_MAX_IMAGES=5
@@ -157,12 +158,15 @@ ENABLE_IMAGE_CLEANUP=1
 ENABLE_DOCKER_CACHE_CLEANUP=1
 ```
 
-- `KEEP_MAX_IMAGES`：作为位置参数传给 `clean.sh`；对每个 Docker 仓库名，只保留最新的 `KEEP_MAX_IMAGES` 个唯一镜像 ID，删除更老的。
-- `ENABLE_IMAGE_CLEANUP`：为 `1` 时执行 `clean.sh`；为 `0` 时完全跳过旧镜像清理。
+- `KEEP_MAX_IMAGES`：旧配置，仅供手工调用 `clean.sh` 时使用。`run.sh` 不再使用它。
+- `ENABLE_IMAGE_CLEANUP`：为 `1` 时执行 `clear-docker-cache.sh image-prune`；为 `0` 时完全跳过 dangling image 清理。
 - `ENABLE_DOCKER_CACHE_CLEANUP`：为 `1` 时执行 `clear-docker-cache.sh`；为 `0` 时跳过 Runner 管理的 Docker 容器/卷清理。
+
+镜像清理刻意保持保守：它只删除 dangling image，语义等价于 `docker image prune -f`。它永远不会执行 `docker image prune -a`、`docker system prune` 或 `docker system prune -a`，也永远不会删除 tagged image。
 
 ### `clean.sh`
 
+- 这是旧的辅助脚本，`run.sh` 不会调用它。
 - 通过 `docker images --format '{{.Repository}}'` 枚举 Docker 仓库。
 - 是按“每个仓库”处理，而不是全局统一保留。
 - 会删除较老的镜像 ID，并为每个仓库名保留最新的 `KEEP_MAX_IMAGES` 个唯一镜像 ID。
@@ -174,11 +178,13 @@ ENABLE_DOCKER_CACHE_CLEANUP=1
 
 ```bash
 bash clear-docker-cache.sh prune-volumes
+bash clear-docker-cache.sh image-prune
 bash clear-docker-cache.sh prune
 bash clear-docker-cache.sh space
 bash clear-docker-cache.sh help
 ```
 
+- `image-prune`：只删除 dangling Docker image，使用 `docker image prune -f`；不会删除 tagged image。
 - `prune-volumes`：删除未使用的 Runner 管理容器和卷。
 - `prune`：仅删除未使用的 Runner 管理容器。
 - `space`：显示 Docker 磁盘占用。

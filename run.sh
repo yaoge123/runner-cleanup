@@ -69,7 +69,7 @@ printf 'ENABLE_DOCKER_CACHE_CLEANUP=%s\n' "${ENABLE_DOCKER_CACHE_CLEANUP}"
 printf 'ENABLE_LOCAL_CACHE_CLEANUP=%s\n' "${ENABLE_LOCAL_CACHE_CLEANUP}"
 
 if [ "${ENABLE_IMAGE_CLEANUP}" = "1" ]; then
-  bash "${SCRIPT_DIR}/clean.sh" "${KEEP_MAX_IMAGES}"
+  bash "${SCRIPT_DIR}/clear-docker-cache.sh" image-prune
 fi
 
 if [ "${ENABLE_DOCKER_CACHE_CLEANUP}" = "1" ]; then

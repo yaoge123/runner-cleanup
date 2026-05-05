@@ -3,7 +3,8 @@
 
 #########################################################################################
 #  SCRIPT: clear-docker-cache.sh
-#  Description: Used to cleanup unused docker containers and volumes
+#  Description: Used to cleanup dangling Docker images and unused runner-managed
+#               containers/volumes
 ######################################################################################
 IFS=$'\n\t'
 set -euo pipefail
@@ -19,7 +20,8 @@ REQUIRED_DOCKER_API_VERSION=1.25
 FILTER_FLAG='label=com.gitlab.gitlab-runner.managed=true'
 
 usage() {
-  echo -e "\nUsage: $0 prune-volumes|prune|space|help\n"
+  echo -e "\nUsage: $0 image-prune|prune-volumes|prune|space|help\n"
+  echo -e "\timage-prune      Remove dangling Docker images only"
   echo -e "\tprune-volumes    Remove all unused containers (both dangling and unreferenced) and volumes"
   echo -e "\tprune            Remove all unused containers (both dangling and unreferenced)"
   echo -e "\tspace            Show docker disk usage"
@@ -69,6 +71,26 @@ container_args() {
 }
 
 case "$COMMAND" in
+
+  image-prune)
+
+    echo -e "\nCheck and remove dangling Docker images only."
+    echo -e "----------------------------------------------"
+
+    DANGLING_IMAGES=$(docker image ls --filter dangling=true --format '{{.Repository}}:{{.Tag}} {{.ID}}')
+
+    if [ -z "${DANGLING_IMAGES}" ]; then
+      echo -e "No dangling Docker images found."
+      exit 0
+    fi
+
+    echo -e "Dangling Docker images found:"
+    echo -e "${DANGLING_IMAGES}"
+
+    run_or_print docker image prune -f
+
+    exit 0
+    ;;
 
   prune)
 

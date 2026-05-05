@@ -54,7 +54,7 @@ EOF
   cat > "${root}/clear-docker-cache.sh" <<'EOF'
 #!/usr/bin/env bash
 set -euo pipefail
-printf 'docker:%s\n' "${DRY_RUN:-unset}" >> "${RUNNER_CLEANUP_TEST_CALLS}"
+printf 'docker:%s:%s\n' "${DRY_RUN:-unset}" "${1:-default}" >> "${RUNNER_CLEANUP_TEST_CALLS}"
 EOF
 
   cat > "${root}/clear-runner-local-cache.sh" <<'EOF'
@@ -113,16 +113,18 @@ EOF
 DEFAULT_CALLS="${TMP_DIR}/default.calls"
 run_case "${TMP_DIR}/default" "" "${DEFAULT_CALLS}"
 
-assert_file_contains "${DEFAULT_CALLS}" 'clean:1:7'
-assert_file_contains "${DEFAULT_CALLS}" 'docker:1'
+assert_file_not_contains "${DEFAULT_CALLS}" 'clean:'
+assert_file_contains "${DEFAULT_CALLS}" 'docker:1:image-prune'
+assert_file_contains "${DEFAULT_CALLS}" 'docker:1:default'
 assert_file_contains "${DEFAULT_CALLS}" 'local:1'
 assert_file_not_contains "${DEFAULT_CALLS}" 'unset'
-assert_file_equals "${DEFAULT_CALLS}" $'clean:1:7\ndocker:1\nlocal:1'
+assert_file_equals "${DEFAULT_CALLS}" $'docker:1:image-prune\ndocker:1:default\nlocal:1'
 
 REAL_CALLS="${TMP_DIR}/real.calls"
 run_case "${TMP_DIR}/real" '0' "${REAL_CALLS}"
 
-assert_file_contains "${REAL_CALLS}" 'clean:0:7'
-assert_file_contains "${REAL_CALLS}" 'docker:0'
+assert_file_not_contains "${REAL_CALLS}" 'clean:'
+assert_file_contains "${REAL_CALLS}" 'docker:0:image-prune'
+assert_file_contains "${REAL_CALLS}" 'docker:0:default'
 assert_file_contains "${REAL_CALLS}" 'local:0'
-assert_file_equals "${REAL_CALLS}" $'clean:0:7\ndocker:0\nlocal:0'
+assert_file_equals "${REAL_CALLS}" $'docker:0:image-prune\ndocker:0:default\nlocal:0'

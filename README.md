@@ -6,7 +6,7 @@ Shell scripts for keeping GitLab Runner hosts clean without touching GitLab or r
 
 ## What it does
 
-- Removes old Docker images and keeps the latest `KEEP_MAX_IMAGES` unique image IDs per repository.
+- Removes dangling Docker images only; tagged images are never removed automatically.
 - Runs GitLab Runner Docker cleanup for unused runner-managed containers and volumes.
 - Scans and cleans host-based runner local cache under `runner-*` directories.
 
@@ -14,13 +14,14 @@ Shell scripts for keeping GitLab Runner hosts clean without touching GitLab or r
 
 `run.sh` can drive three independent cleanup layers:
 
-- `ENABLE_IMAGE_CLEANUP=1`: run `clean.sh` to prune old Docker images.
+- `ENABLE_IMAGE_CLEANUP=1`: run dangling-only Docker image cleanup with `docker image prune -f`.
 - `ENABLE_DOCKER_CACHE_CLEANUP=1`: run `clear-docker-cache.sh` for runner-managed Docker garbage.
 - `ENABLE_LOCAL_CACHE_CLEANUP=1`: run `clear-runner-local-cache.sh` for host-based `runner-*` cache/workspace data.
 
 The Docker-facing cleanup and the host local-cache cleanup are different:
 
-- Docker cleanup targets Docker objects managed by GitLab Runner, such as stopped containers and unused volumes.
+- Image cleanup targets only dangling Docker images (`<none>:<none>`). It does not remove tagged images such as `ubuntu:20.04` or `node:18`.
+- Docker cache cleanup targets Docker objects managed by GitLab Runner, such as stopped containers and unused volumes.
 - Local cache cleanup targets files under the runner cache directory on the host, especially `runner-*` workspaces and `*.tmp` directories.
 
 ## Local cache model
@@ -34,7 +35,7 @@ The local cache cleanup script treats data in three classes:
 ## Files
 
 - `run.sh`: combined entrypoint.
-- `clean.sh`: old Docker image cleanup.
+- `clean.sh`: legacy per-repository old Docker image cleanup helper; not used by `run.sh`.
 - `clear-docker-cache.sh`: runner-managed Docker container and volume cleanup.
 - `clear-runner-local-cache.sh`: host-based runner local cache scan and cleanup.
 - `logrotate/runner-cleanup`: sample logrotate policy for `/var/log/runner-cleanup/runner-cleanup.log`.
@@ -76,8 +77,8 @@ The settings below are the ones operators are expected to change. They come from
 
 | Variable | Default | Used by | When to change |
 | --- | --- | --- | --- |
-| `KEEP_MAX_IMAGES` | `5` in `run.sh` | `clean.sh` | Raise or lower Docker image retention per repository. |
-| `ENABLE_IMAGE_CLEANUP` | `1` in `run.sh` | `run.sh` -> `clean.sh` | Set to `0` if you do not want old Docker images removed. |
+| `KEEP_MAX_IMAGES` | `5` in `run.sh` | `clean.sh` manual use only | Legacy per-repository image retention setting; `run.sh` no longer uses it. |
+| `ENABLE_IMAGE_CLEANUP` | `1` in `run.sh` | `run.sh` -> `clear-docker-cache.sh image-prune` | Set to `0` if you do not want dangling Docker images removed. Tagged images are never removed by this layer. |
 | `ENABLE_DOCKER_CACHE_CLEANUP` | `1` in `run.sh` | `run.sh` -> `clear-docker-cache.sh` | Set to `0` if you do not want runner-managed Docker objects pruned. |
 | `ENABLE_LOCAL_CACHE_CLEANUP` | `1` in `run.sh` | `run.sh` -> `clear-runner-local-cache.sh` | Disable only if this host should skip local cache cleanup entirely. |
 | `RUNNER_CACHE_DIR` | `/cache` | `clear-runner-local-cache.sh` | Change only when the runner host stores local cache under another allowlisted path. |
@@ -141,7 +142,7 @@ ENABLE_LOCAL_CACHE_CLEANUP=1
 
 `run.sh` executes cleanup in this order:
 
-1. `clean.sh "${KEEP_MAX_IMAGES}"`
+1. `clear-docker-cache.sh image-prune`
 2. `clear-docker-cache.sh`
 3. `clear-runner-local-cache.sh`
 
@@ -149,7 +150,7 @@ Each layer can be enabled or disabled independently.
 
 ## Docker cleanup variables
 
-`run.sh`, `clean.sh`, and `clear-docker-cache.sh` use these Docker-related settings:
+`run.sh` and `clear-docker-cache.sh` use these Docker-related settings:
 
 ```bash
 KEEP_MAX_IMAGES=5
@@ -157,12 +158,15 @@ ENABLE_IMAGE_CLEANUP=1
 ENABLE_DOCKER_CACHE_CLEANUP=1
 ```
 
-- `KEEP_MAX_IMAGES`: passed to `clean.sh` as a positional argument; for each Docker repository name, keep only the newest `KEEP_MAX_IMAGES` unique image IDs and remove older ones.
-- `ENABLE_IMAGE_CLEANUP`: when `1`, run `clean.sh`; when `0`, skip old-image cleanup completely.
+- `KEEP_MAX_IMAGES`: legacy setting for manual `clean.sh` use only. `run.sh` does not use it.
+- `ENABLE_IMAGE_CLEANUP`: when `1`, run `clear-docker-cache.sh image-prune`; when `0`, skip dangling-image cleanup completely.
 - `ENABLE_DOCKER_CACHE_CLEANUP`: when `1`, run `clear-docker-cache.sh`; when `0`, skip runner-managed Docker container/volume cleanup.
+
+Image cleanup is intentionally conservative: it only removes dangling images, equivalent to `docker image prune -f`. It never runs `docker image prune -a`, `docker system prune`, or `docker system prune -a`, and it never removes tagged images.
 
 ### `clean.sh`
 
+- This is a legacy helper and is not called by `run.sh`.
 - Enumerates Docker repositories with `docker images --format '{{.Repository}}'`.
 - Works per repository, not globally across all images.
 - Removes older image IDs and keeps the newest `KEEP_MAX_IMAGES` unique image IDs for each repository name.
@@ -174,11 +178,13 @@ Supported commands:
 
 ```bash
 bash clear-docker-cache.sh prune-volumes
+bash clear-docker-cache.sh image-prune
 bash clear-docker-cache.sh prune
 bash clear-docker-cache.sh space
 bash clear-docker-cache.sh help
 ```
 
+- `image-prune`: remove dangling Docker images only, using `docker image prune -f`; tagged images are never removed.
 - `prune-volumes`: remove unused runner-managed containers and volumes.
 - `prune`: remove unused runner-managed containers only.
 - `space`: show Docker disk usage.

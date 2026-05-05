@@ -57,6 +57,9 @@ case "$*" in
   "system df")
     printf 'TYPE TOTAL ACTIVE SIZE RECLAIMABLE\n'
     ;;
+  "image ls --filter dangling=true --format {{.Repository}}:{{.Tag}} {{.ID}}")
+    printf '<none>:<none> dangling-1\n'
+    ;;
 esac
 EOF
 
@@ -76,6 +79,27 @@ PATH="${TMP_DIR}/bin:${PATH}" RUNNER_CLEANUP_TEST_DOCKER_LOG="${DOCKER_LOG}" DRY
 
 assert_file_contains "${OUTPUT_LOG}" 'DRY_RUN=1 would run: env DOCKER_API_VERSION=1.41 docker system prune --volumes -af --filter label=com.gitlab.gitlab-runner.managed=true'
 assert_file_not_contains "${DOCKER_LOG}" 'system prune'
+
+: > "${DOCKER_LOG}"
+PATH="${TMP_DIR}/bin:${PATH}" RUNNER_CLEANUP_TEST_DOCKER_LOG="${DOCKER_LOG}" DRY_RUN=1 \
+  bash "${REPO_DIR}/clear-docker-cache.sh" image-prune > "${OUTPUT_LOG}"
+
+assert_file_contains "${OUTPUT_LOG}" 'Check and remove dangling Docker images only.'
+assert_file_contains "${OUTPUT_LOG}" 'DRY_RUN=1 would run: docker image prune -f'
+assert_file_contains "${DOCKER_LOG}" 'image ls --filter dangling=true'
+assert_file_not_contains "${OUTPUT_LOG}" 'system prune'
+assert_file_not_contains "${OUTPUT_LOG}" 'image prune -a'
+assert_file_not_contains "${OUTPUT_LOG}" 'prune -af'
+assert_file_not_contains "${DOCKER_LOG}" 'image prune'
+
+: > "${DOCKER_LOG}"
+PATH="${TMP_DIR}/bin:${PATH}" RUNNER_CLEANUP_TEST_DOCKER_LOG="${DOCKER_LOG}" DRY_RUN=0 \
+  bash "${REPO_DIR}/clear-docker-cache.sh" image-prune > "${OUTPUT_LOG}"
+
+assert_file_contains "${DOCKER_LOG}" 'image prune -f'
+assert_file_not_contains "${DOCKER_LOG}" 'system prune'
+assert_file_not_contains "${DOCKER_LOG}" 'image prune -a'
+assert_file_not_contains "${DOCKER_LOG}" 'prune -af'
 
 : > "${DOCKER_LOG}"
 PATH="${TMP_DIR}/bin:${PATH}" RUNNER_CLEANUP_TEST_DOCKER_LOG="${DOCKER_LOG}" RUNNER_CLEANUP_TEST_DOCKER_CLIENT_VERSION='17.05.0' DRY_RUN=1 \
