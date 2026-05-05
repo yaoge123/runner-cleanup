@@ -70,6 +70,7 @@ run_case() {
   local case_dir=$1
   local dry_run_value=$2
   local calls_file=$3
+  local enable_docker_cache_cleanup=${4:-1}
   local log_dir="${case_dir}/logs"
   local log_file="${log_dir}/runner-cleanup.log"
   local config_file="${case_dir}/runner-cleanup.conf"
@@ -80,7 +81,7 @@ run_case() {
   cat > "${config_file}" <<EOF
 KEEP_MAX_IMAGES=7
 ENABLE_IMAGE_CLEANUP=1
-ENABLE_DOCKER_CACHE_CLEANUP=1
+ENABLE_DOCKER_CACHE_CLEANUP=${enable_docker_cache_cleanup}
 ENABLE_LOCAL_CACHE_CLEANUP=1
 RUNNER_CLEANUP_LOG_DIR=${log_dir}
 RUNNER_CLEANUP_LOG_FILE=${log_file}
@@ -128,3 +129,12 @@ assert_file_contains "${REAL_CALLS}" 'docker:0:image-prune'
 assert_file_contains "${REAL_CALLS}" 'docker:0:default'
 assert_file_contains "${REAL_CALLS}" 'local:0'
 assert_file_equals "${REAL_CALLS}" $'docker:0:image-prune\ndocker:0:default\nlocal:0'
+
+IMAGE_ONLY_CALLS="${TMP_DIR}/image-only.calls"
+run_case "${TMP_DIR}/image-only" '0' "${IMAGE_ONLY_CALLS}" '0'
+
+assert_file_not_contains "${IMAGE_ONLY_CALLS}" 'clean:'
+assert_file_contains "${IMAGE_ONLY_CALLS}" 'docker:0:image-prune'
+assert_file_not_contains "${IMAGE_ONLY_CALLS}" 'docker:0:default'
+assert_file_contains "${IMAGE_ONLY_CALLS}" 'local:0'
+assert_file_equals "${IMAGE_ONLY_CALLS}" $'docker:0:image-prune\nlocal:0'

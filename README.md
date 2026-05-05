@@ -6,7 +6,7 @@ Shell scripts for keeping GitLab Runner hosts clean without touching GitLab or r
 
 ## What it does
 
-- Removes dangling Docker images only; tagged images are never removed automatically.
+- Adds a conservative image cleanup layer that removes dangling Docker images only.
 - Runs GitLab Runner Docker cleanup for unused runner-managed containers and volumes.
 - Scans and cleans host-based runner local cache under `runner-*` directories.
 
@@ -20,7 +20,7 @@ Shell scripts for keeping GitLab Runner hosts clean without touching GitLab or r
 
 The Docker-facing cleanup and the host local-cache cleanup are different:
 
-- Image cleanup targets only dangling Docker images (`<none>:<none>`). It does not remove tagged images such as `ubuntu:20.04` or `node:18`.
+- The image cleanup layer targets only dangling Docker images (`<none>:<none>`). It does not remove tagged images such as `ubuntu:20.04` or `node:18`.
 - Docker cache cleanup targets Docker objects managed by GitLab Runner, such as stopped containers and unused volumes.
 - Local cache cleanup targets files under the runner cache directory on the host, especially `runner-*` workspaces and `*.tmp` directories.
 
@@ -78,7 +78,7 @@ The settings below are the ones operators are expected to change. They come from
 | Variable | Default | Used by | When to change |
 | --- | --- | --- | --- |
 | `KEEP_MAX_IMAGES` | `5` in `run.sh` | `clean.sh` manual use only | Legacy per-repository image retention setting; `run.sh` no longer uses it. |
-| `ENABLE_IMAGE_CLEANUP` | `1` in `run.sh` | `run.sh` -> `clear-docker-cache.sh image-prune` | Set to `0` if you do not want dangling Docker images removed. Tagged images are never removed by this layer. |
+| `ENABLE_IMAGE_CLEANUP` | `1` in `run.sh` | `run.sh` -> `clear-docker-cache.sh image-prune` | Set to `0` if you do not want dangling Docker images removed. Tagged images are not removed by this layer. |
 | `ENABLE_DOCKER_CACHE_CLEANUP` | `1` in `run.sh` | `run.sh` -> `clear-docker-cache.sh` | Set to `0` if you do not want runner-managed Docker objects pruned. |
 | `ENABLE_LOCAL_CACHE_CLEANUP` | `1` in `run.sh` | `run.sh` -> `clear-runner-local-cache.sh` | Disable only if this host should skip local cache cleanup entirely. |
 | `RUNNER_CACHE_DIR` | `/cache` | `clear-runner-local-cache.sh` | Change only when the runner host stores local cache under another allowlisted path. |
@@ -162,7 +162,9 @@ ENABLE_DOCKER_CACHE_CLEANUP=1
 - `ENABLE_IMAGE_CLEANUP`: when `1`, run `clear-docker-cache.sh image-prune`; when `0`, skip dangling-image cleanup completely.
 - `ENABLE_DOCKER_CACHE_CLEANUP`: when `1`, run `clear-docker-cache.sh`; when `0`, skip runner-managed Docker container/volume cleanup.
 
-Image cleanup is intentionally conservative: it only removes dangling images, equivalent to `docker image prune -f`. It never runs `docker image prune -a`, `docker system prune`, or `docker system prune -a`, and it never removes tagged images.
+The `ENABLE_IMAGE_CLEANUP` layer is intentionally conservative: it only removes dangling images, equivalent to `docker image prune -f`. This layer never runs `docker image prune -a`, `docker system prune`, or `docker system prune -a`, and it does not remove tagged images.
+
+The `ENABLE_DOCKER_CACHE_CLEANUP` layer is separate and keeps the existing runner-managed Docker garbage cleanup behavior in `clear-docker-cache.sh`. When enabled, that layer still invokes Docker system prune commands filtered by the GitLab Runner managed label.
 
 ### `clean.sh`
 

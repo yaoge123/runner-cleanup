@@ -6,7 +6,7 @@
 
 ## 功能概览
 
-- 只删除 dangling Docker 镜像；不会自动删除任何带 tag 的镜像。
+- 增加一个保守的镜像清理层，只删除 dangling Docker 镜像。
 - 执行 GitLab Runner 管理的 Docker 容器与卷清理。
 - 扫描并清理主机上 `runner-*` 目录下的本地 Runner 缓存。
 
@@ -20,7 +20,7 @@
 
 Docker 侧清理与主机本地缓存清理不是一回事：
 
-- 镜像清理只针对 dangling Docker image（`<none>:<none>`），不会删除 `ubuntu:20.04` 或 `node:18` 这类带 tag 的镜像。
+- 镜像清理层只针对 dangling Docker image（`<none>:<none>`），不会删除 `ubuntu:20.04` 或 `node:18` 这类带 tag 的镜像。
 - Docker cache 清理针对 GitLab Runner 管理的 Docker 对象，例如已停止容器和未使用卷。
 - 本地缓存清理针对主机缓存目录里的文件，尤其是 `runner-*` 工作区和 `*.tmp` 目录。
 
@@ -78,7 +78,7 @@ bash run.sh
 | 变量 | 默认值 | 使用位置 | 何时调整 |
 | --- | --- | --- | --- |
 | `KEEP_MAX_IMAGES` | `run.sh` 中为 `5` | 仅供手工调用 `clean.sh` 时使用 | 旧的按仓库保留镜像设置；`run.sh` 不再使用它。 |
-| `ENABLE_IMAGE_CLEANUP` | `run.sh` 中为 `1` | `run.sh` -> `clear-docker-cache.sh image-prune` | 如果不希望删除 dangling Docker 镜像，设为 `0`；这一层永远不会删除 tagged image。 |
+| `ENABLE_IMAGE_CLEANUP` | `run.sh` 中为 `1` | `run.sh` -> `clear-docker-cache.sh image-prune` | 如果不希望删除 dangling Docker 镜像，设为 `0`；这一层不会删除 tagged image。 |
 | `ENABLE_DOCKER_CACHE_CLEANUP` | `run.sh` 中为 `1` | `run.sh` -> `clear-docker-cache.sh` | 如果不希望清理 Runner 管理的 Docker 对象，设为 `0`。 |
 | `ENABLE_LOCAL_CACHE_CLEANUP` | `run.sh` 中为 `1` | `run.sh` -> `clear-runner-local-cache.sh` | 只有在这台主机完全不需要本地缓存清理时才建议关闭。 |
 | `RUNNER_CACHE_DIR` | `/cache` | `clear-runner-local-cache.sh` | 仅在 Runner 本地缓存不在默认允许路径中时调整。 |
@@ -162,7 +162,9 @@ ENABLE_DOCKER_CACHE_CLEANUP=1
 - `ENABLE_IMAGE_CLEANUP`：为 `1` 时执行 `clear-docker-cache.sh image-prune`；为 `0` 时完全跳过 dangling image 清理。
 - `ENABLE_DOCKER_CACHE_CLEANUP`：为 `1` 时执行 `clear-docker-cache.sh`；为 `0` 时跳过 Runner 管理的 Docker 容器/卷清理。
 
-镜像清理刻意保持保守：它只删除 dangling image，语义等价于 `docker image prune -f`。它永远不会执行 `docker image prune -a`、`docker system prune` 或 `docker system prune -a`，也永远不会删除 tagged image。
+`ENABLE_IMAGE_CLEANUP` 这一层刻意保持保守：它只删除 dangling image，语义等价于 `docker image prune -f`。这一层不会执行 `docker image prune -a`、`docker system prune` 或 `docker system prune -a`，也不会删除 tagged image。
+
+`ENABLE_DOCKER_CACHE_CLEANUP` 是独立的另一层，会保留 `clear-docker-cache.sh` 中原有的 Runner 管理 Docker 垃圾清理行为。启用时，这一层仍会执行带 GitLab Runner managed label 过滤条件的 Docker system prune 命令。
 
 ### `clean.sh`
 
