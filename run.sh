@@ -7,8 +7,11 @@ SCRIPT_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 setup_runner_cleanup_logging() {
   local log_dir=$1
   local log_file=$2
+  local log_file_dir
 
   mkdir -p "${log_dir}"
+  log_file_dir=$(dirname -- "${log_file}")
+  mkdir -p "${log_file_dir}"
 
   export RUNNER_CLEANUP_LOG_DIR="${log_dir}"
   export RUNNER_CLEANUP_LOG_FILE="${log_file}"

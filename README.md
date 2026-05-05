@@ -51,7 +51,7 @@ The local cache cleanup script treats data in three classes:
 Clone the repository and run scripts locally on the runner host.
 
 ```bash
-git clone https://github.com/yaoge123/runner-cleanup.git
+git clone https://github.com/nh4ttruong/runner-cleanup.git
 cd runner-cleanup
 cp runner-cleanup.conf.example runner-cleanup.conf
 bash run.sh
@@ -263,6 +263,7 @@ Recommended model:
 - Run the scripts with permissions that can read and delete the target cache directories.
 - File logging is handled by `run.sh`; cron no longer needs shell redirection for the normal case.
 - A sample `logrotate` config is provided in `logrotate/runner-cleanup`.
+- Install the sample logrotate config through your system's normal logrotate configuration path so the cleanup log does not grow without bound.
 - `DRY_RUN=1` now protects all three cleanup layers; `clean.sh` and `clear-docker-cache.sh` print the Docker commands they would run instead of deleting anything.
 - `run.sh` now logs `DRY_RUN` plus all three layer enable flags at startup so cron logs show the effective execution mode immediately.
 - Removing workspace data can make the next job slower due to cache restore or rebuild.

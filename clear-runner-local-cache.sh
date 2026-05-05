@@ -89,7 +89,28 @@ path_allowed() {
   esac
 }
 
+canonicalize_path() {
+  local path=$1
+
+  if command -v realpath >/dev/null 2>&1; then
+    realpath -m -- "${path}"
+    return 0
+  fi
+
+  if command -v readlink >/dev/null 2>&1; then
+    readlink -m -- "${path}"
+    return 0
+  fi
+
+  return 1
+}
+
 ensure_prerequisites() {
+  command -v python3 >/dev/null 2>&1 || fail "python3 is required for local cache scanning"
+
+  local configured_cache_dir=$RUNNER_CACHE_DIR
+  RUNNER_CACHE_DIR=$(canonicalize_path "${configured_cache_dir}") || fail "Unable to canonicalize RUNNER_CACHE_DIR ${configured_cache_dir}"
+
   path_allowed "${RUNNER_CACHE_DIR}" || fail "RUNNER_CACHE_DIR ${RUNNER_CACHE_DIR} is not in the allowlist"
   [ -d "${RUNNER_CACHE_DIR}" ] || fail "RUNNER_CACHE_DIR ${RUNNER_CACHE_DIR} does not exist"
   [ "${RUNNER_CACHE_DIR}" != "/" ] || fail "Refusing to operate on root directory"

@@ -51,7 +51,7 @@ Docker 侧清理与主机本地缓存清理不是一回事：
 在 Runner 主机上克隆仓库并本地执行脚本：
 
 ```bash
-git clone https://github.com/yaoge123/runner-cleanup.git
+git clone https://github.com/nh4ttruong/runner-cleanup.git
 cd runner-cleanup
 cp runner-cleanup.conf.example runner-cleanup.conf
 bash run.sh
@@ -263,6 +263,7 @@ TOP_N_LARGEST=10
 - 运行脚本的用户需要有权限读取并删除目标缓存目录。
 - 正常情况下，文件日志由 `run.sh` 处理，cron 不需要额外做 shell 重定向。
 - 仓库中提供了 `logrotate` 示例配置：`logrotate/runner-cleanup`。
+- 请通过系统标准的 logrotate 配置路径安装示例策略，避免清理日志无限增长。
 - `DRY_RUN=1` 现在会保护三层清理；`clean.sh` 和 `clear-docker-cache.sh` 会打印“本来会执行的 Docker 命令”，而不会真正删除。
 - `run.sh` 现在会在启动日志里打印 `DRY_RUN` 和三层开关状态，便于直接从 cron 日志判断这次到底是观察模式还是实删模式。
 - 删除工作区数据后，后续 Job 可能因为重新恢复缓存或重新构建而变慢。
