@@ -82,6 +82,14 @@ assert_file_not_contains "${DOCKER_LOG}" 'system prune'
 
 : > "${DOCKER_LOG}"
 PATH="${TMP_DIR}/bin:${PATH}" RUNNER_CLEANUP_TEST_DOCKER_LOG="${DOCKER_LOG}" DRY_RUN=1 \
+  bash "${REPO_DIR}/clear-docker-cache.sh" > "${OUTPUT_LOG}"
+
+assert_file_contains "${OUTPUT_LOG}" 'DRY_RUN=1 would run: env DOCKER_API_VERSION=1.41 docker system prune --volumes -af --filter label=com.gitlab.gitlab-runner.managed=true'
+assert_file_not_contains "${OUTPUT_LOG}" 'Usage:'
+assert_file_not_contains "${DOCKER_LOG}" 'system prune'
+
+: > "${DOCKER_LOG}"
+PATH="${TMP_DIR}/bin:${PATH}" RUNNER_CLEANUP_TEST_DOCKER_LOG="${DOCKER_LOG}" DRY_RUN=1 \
   bash "${REPO_DIR}/clear-docker-cache.sh" image-prune > "${OUTPUT_LOG}"
 
 assert_file_contains "${OUTPUT_LOG}" 'Check and remove dangling Docker images only.'

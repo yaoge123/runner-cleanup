@@ -128,11 +128,6 @@ case "$COMMAND" in
     usage
     ;;
 
-  *)
-
-    usage
-    ;;
-
   prune-volumes)
 
     echo -e "\nCheck and remove all unused containers (both dangling and unreferenced) including volumes."
@@ -161,6 +156,11 @@ case "$COMMAND" in
     run_or_print env DOCKER_API_VERSION=$PRUNE_DOCKER_API_VERSION docker system prune "$VOLUMES_FLAG" -af --filter "$FILTER_FLAG"
 
     exit 0
+    ;;
+
+  *)
+
+    usage
     ;;
 
 esac
