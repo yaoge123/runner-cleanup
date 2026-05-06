@@ -103,10 +103,6 @@ bash run.sh
 | --- | --- | --- |
 | `RUNNER_CLEANUP_LOADED_CONFIG` | `load-config.sh` | 实际加载到的配置文件绝对路径；`run.sh` 会把它写成日志里的 `config=...`。 |
 | `RUNNER_CLEANUP_LOGGING_INITIALIZED` | `run.sh` | 内部标志，防止重复初始化启动日志。 |
-| `BOOTSTRAP_LOG_DIR` | `run.sh` | 最终配置完成前使用的临时启动日志目录。 |
-| `BOOTSTRAP_LOG_FILE` | `run.sh` | 最终配置完成前使用的临时启动日志文件。 |
-| `FINAL_LOG_DIR` | `run.sh` | 配置/环境变量求值后的最终日志目录。 |
-| `FINAL_LOG_FILE` | `run.sh` | 配置/环境变量求值后的最终日志文件。 |
 
 除非你正在调试脚本本身，否则不要把这些内部变量写进 `runner-cleanup.conf`。
 

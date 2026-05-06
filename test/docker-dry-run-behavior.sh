@@ -68,6 +68,21 @@ EOF
 
 chmod +x "${TMP_DIR}/bin/docker"
 
+: > "${DOCKER_LOG}"
+set +e
+PATH="${TMP_DIR}/bin:${PATH}" RUNNER_CLEANUP_TEST_DOCKER_LOG="${DOCKER_LOG}" DRY_RUN=1 \
+  bash "${REPO_DIR}/clean.sh" > "${OUTPUT_LOG}" 2>&1
+clean_missing_arg_exit_code=$?
+set -e
+
+if [ "${clean_missing_arg_exit_code}" -eq 0 ]; then
+  printf 'clean.sh without KEEP_MAX_IMAGES should fail\n' >&2
+  exit 1
+fi
+
+assert_file_contains "${OUTPUT_LOG}" 'Usage:'
+assert_file_contains "${OUTPUT_LOG}" 'KEEP_MAX_IMAGES'
+
 PATH="${TMP_DIR}/bin:${PATH}" RUNNER_CLEANUP_TEST_DOCKER_LOG="${DOCKER_LOG}" DRY_RUN=1 \
   bash "${REPO_DIR}/clean.sh" 1 > "${OUTPUT_LOG}"
 

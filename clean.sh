@@ -2,6 +2,16 @@
 
 set -euo pipefail
 
+usage() {
+    echo "Usage: $0 KEEP_MAX_IMAGES"
+    echo "  KEEP_MAX_IMAGES: number of newest unique image IDs to keep per repository"
+    exit 1
+}
+
+if [ "$#" -ne 1 ]; then
+    usage
+fi
+
 KEEP_MAX_IMAGES=$1
 DRY_RUN=${DRY_RUN:-1}
 REPOSITORIES=$(docker images --format '{{.Repository}}' | sort -u)

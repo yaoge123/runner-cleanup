@@ -105,7 +105,7 @@ case "$COMMAND" in
                   --filter="$FILTER_FLAG")
 
       if [ -n "${CONTAINERS}" ]; then
-        container_args "${CONTAINERS}" CONTAINER_ARGS
+        container_args "${CONTAINERS}"
         run_or_print docker rm "${CONTAINER_ARGS[@]}"
       fi
     else
@@ -147,7 +147,7 @@ case "$COMMAND" in
                     --filter="$FILTER_FLAG")
 
         if [ -n "${CONTAINERS}" ]; then
-          container_args "${CONTAINERS}" CONTAINER_ARGS
+          container_args "${CONTAINERS}"
           run_or_print docker rm -v "${CONTAINER_ARGS[@]}"
         fi
 

@@ -103,10 +103,6 @@ These are implementation details, not normal operator settings:
 | --- | --- | --- |
 | `RUNNER_CLEANUP_LOADED_CONFIG` | `load-config.sh` | Absolute path of the config file actually loaded; `run.sh` writes it as `config=...` in logs. |
 | `RUNNER_CLEANUP_LOGGING_INITIALIZED` | `run.sh` | Internal guard that prevents repeated bootstrap log setup. |
-| `BOOTSTRAP_LOG_DIR` | `run.sh` | Temporary pre-config logging directory used before final config resolution. |
-| `BOOTSTRAP_LOG_FILE` | `run.sh` | Temporary pre-config log file path used during early startup. |
-| `FINAL_LOG_DIR` | `run.sh` | Final resolved log directory after config/env evaluation. |
-| `FINAL_LOG_FILE` | `run.sh` | Final resolved log file after config/env evaluation. |
 
 Do not put the internal variables above in `runner-cleanup.conf` unless you are debugging the scripts themselves.
 
