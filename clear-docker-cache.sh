@@ -16,6 +16,7 @@ fi
 
 DOCKER_API_VERSION=$(docker version --format '{{.Client.APIVersion}}')
 DOCKER_CLIENT_VERSION=$(docker version --format '{{.Client.Version}}')
+DOCKER_MIN_API_VERSION=$(docker version --format '{{.Server.MinAPIVersion}}')
 REQUIRED_DOCKER_API_VERSION=1.25
 FILTER_FLAG='label=com.gitlab.gitlab-runner.managed=true'
 
@@ -40,7 +41,7 @@ fi
 # We should be able to use DOCKER_API_VERSION 1.41, as this problem was only introduced
 # in Docker 23.0 which uses 1.42.
 PRUNE_DOCKER_API_VERSION=$DOCKER_API_VERSION
-if awk "BEGIN {exit !(\"$DOCKER_API_VERSION\" > \"1.41\")}"; then
+if awk "BEGIN {exit !(\"$DOCKER_API_VERSION\" > \"1.41\" && \"$DOCKER_MIN_API_VERSION\" <= \"1.41\")}"; then
   PRUNE_DOCKER_API_VERSION=1.41
 fi
 

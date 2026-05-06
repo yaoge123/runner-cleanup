@@ -51,6 +51,9 @@ case "$*" in
   "version --format {{.Client.Version}}")
     printf '%s\n' "${RUNNER_CLEANUP_TEST_DOCKER_CLIENT_VERSION:-24.0.0}"
     ;;
+  "version --format {{.Server.MinAPIVersion}}")
+    printf '%s\n' "${RUNNER_CLEANUP_TEST_DOCKER_MIN_API_VERSION:-1.24}"
+    ;;
   "ps -a -q --filter=status=exited --filter=status=dead --filter=label=com.gitlab.gitlab-runner.managed=true")
     printf 'container-1\ncontainer-2\n'
     ;;
@@ -86,6 +89,14 @@ PATH="${TMP_DIR}/bin:${PATH}" RUNNER_CLEANUP_TEST_DOCKER_LOG="${DOCKER_LOG}" DRY
 
 assert_file_contains "${OUTPUT_LOG}" 'DRY_RUN=1 would run: env DOCKER_API_VERSION=1.41 docker system prune --volumes -af --filter label=com.gitlab.gitlab-runner.managed=true'
 assert_file_not_contains "${OUTPUT_LOG}" 'Usage:'
+assert_file_not_contains "${DOCKER_LOG}" 'system prune'
+
+: > "${DOCKER_LOG}"
+PATH="${TMP_DIR}/bin:${PATH}" RUNNER_CLEANUP_TEST_DOCKER_LOG="${DOCKER_LOG}" RUNNER_CLEANUP_TEST_DOCKER_API_VERSION='1.52' RUNNER_CLEANUP_TEST_DOCKER_MIN_API_VERSION='1.44' DRY_RUN=1 \
+  bash "${REPO_DIR}/clear-docker-cache.sh" prune-volumes > "${OUTPUT_LOG}"
+
+assert_file_contains "${OUTPUT_LOG}" 'DRY_RUN=1 would run: env DOCKER_API_VERSION=1.52 docker system prune --volumes -af --filter label=com.gitlab.gitlab-runner.managed=true'
+assert_file_not_contains "${OUTPUT_LOG}" 'DOCKER_API_VERSION=1.41'
 assert_file_not_contains "${DOCKER_LOG}" 'system prune'
 
 : > "${DOCKER_LOG}"
