@@ -24,6 +24,17 @@ Docker 侧清理与主机本地缓存清理不是一回事：
 - Docker cache 清理针对 GitLab Runner 管理的 Docker 对象，例如已停止容器和未使用卷。
 - 本地缓存清理针对主机缓存目录里的文件，尤其是 `runner-*` 工作区和 `*.tmp` 目录。
 
+## 运行要求
+
+这些脚本面向 Linux GitLab Runner 主机，要求：
+
+- Bash 4.0 或更新版本。配置加载器使用 Bash associative arrays。
+- Docker 清理层需要可访问 Docker CLI。`clear-docker-cache.sh` 要求 Docker client 和 daemon API 都不低于 `1.25`。
+- 主机本地缓存扫描需要 `python3`。
+- GNU 风格基础工具，包括 `awk`、`find`、`sort`、`stat -c`，以及 `realpath -m` 或 `readlink -m` 二者之一。
+
+如果只手工使用旧的 `clean.sh` 辅助脚本，只需要 Docker CLI 和标准 shell 工具。
+
 ## 本地缓存模型
 
 本地缓存清理脚本把数据分成三类：

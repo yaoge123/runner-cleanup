@@ -24,6 +24,17 @@ The Docker-facing cleanup and the host local-cache cleanup are different:
 - Docker cache cleanup targets Docker objects managed by GitLab Runner, such as stopped containers and unused volumes.
 - Local cache cleanup targets files under the runner cache directory on the host, especially `runner-*` workspaces and `*.tmp` directories.
 
+## Requirements
+
+These scripts are intended for Linux GitLab Runner hosts with:
+
+- Bash 4.0 or newer. The config loader uses Bash associative arrays.
+- Docker CLI access for Docker cleanup layers. `clear-docker-cache.sh` requires Docker client and daemon API `1.25` or newer.
+- `python3` for host local-cache scanning.
+- GNU-style userland tools used by the scripts, including `awk`, `find`, `sort`, `stat -c`, and either `realpath -m` or `readlink -m`.
+
+If only the legacy `clean.sh` helper is used manually, Docker CLI access plus the standard shell tools are sufficient.
+
 ## Local cache model
 
 The local cache cleanup script treats data in three classes:
