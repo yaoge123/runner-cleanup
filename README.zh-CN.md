@@ -33,6 +33,8 @@ Docker 侧清理与主机本地缓存清理不是一回事：
 - 主机本地缓存扫描需要 `python3`。
 - GNU 风格基础工具，包括 `awk`、`find`、`sort`、`stat -c`，以及 `realpath -m` 或 `readlink -m` 二者之一。
 
+Docker API 低于 `1.25` 不作为受支持的兼容目标。如果某台 runner host 的 Docker 版本低到这种程度，应当为该主机关闭 `ENABLE_IMAGE_CLEANUP` 和 `ENABLE_DOCKER_CACHE_CLEANUP`，或先升级 Docker 再启用 Docker 清理。本地主机缓存清理在满足自身依赖时仍可独立使用。
+
 如果只手工使用旧的 `clean.sh` 辅助脚本，只需要 Docker CLI 和标准 shell 工具。
 
 ## 本地缓存模型

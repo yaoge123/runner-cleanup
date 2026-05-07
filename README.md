@@ -33,6 +33,8 @@ These scripts are intended for Linux GitLab Runner hosts with:
 - `python3` for host local-cache scanning.
 - GNU-style userland tools used by the scripts, including `awk`, `find`, `sort`, `stat -c`, and either `realpath -m` or `readlink -m`.
 
+Docker API versions older than `1.25` are not treated as a supported compatibility target. If a runner host is that old, disable `ENABLE_IMAGE_CLEANUP` and `ENABLE_DOCKER_CACHE_CLEANUP` for that host or upgrade Docker before enabling Docker cleanup. Host local-cache cleanup can still be used independently when its own requirements are met.
+
 If only the legacy `clean.sh` helper is used manually, Docker CLI access plus the standard shell tools are sufficient.
 
 ## Local cache model

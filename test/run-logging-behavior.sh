@@ -8,6 +8,11 @@ REPO_DIR=$(cd -- "${SCRIPT_DIR}/.." && pwd)
 TMP_DIR=$(mktemp -d)
 trap 'rm -rf "${TMP_DIR}"' EXIT
 
+if grep -q -- 'declare -gA' "${REPO_DIR}/load-config.sh"; then
+  printf 'load-config.sh should avoid declare -gA so Bash 4.0 associative arrays are sufficient\n' >&2
+  exit 1
+fi
+
 assert_file_contains() {
   local path=$1
   local pattern=$2

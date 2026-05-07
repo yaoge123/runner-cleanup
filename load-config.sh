@@ -53,8 +53,8 @@ load_runner_cleanup_config() {
   local script_dir=${1:-}
   local config_path=${RUNNER_CLEANUP_CONFIG:-}
 
-  declare -gA RUNNER_CLEANUP_ENV_PRESENT=()
-  declare -gA RUNNER_CLEANUP_ENV_VALUES=()
+  RUNNER_CLEANUP_ENV_PRESENT=()
+  RUNNER_CLEANUP_ENV_VALUES=()
 
   if [ -z "${config_path}" ] && [ -n "${script_dir}" ] && [ -f "${script_dir}/runner-cleanup.conf" ]; then
     config_path="${script_dir}/runner-cleanup.conf"
