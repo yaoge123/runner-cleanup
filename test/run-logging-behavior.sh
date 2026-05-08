@@ -13,6 +13,29 @@ if grep -q -- 'declare -gA' "${REPO_DIR}/load-config.sh"; then
   exit 1
 fi
 
+set +e
+bash -c '
+  set -euo pipefail
+  source "$1"
+  RUNNER_CLEANUP_LOG_DIR=/tmp/runner-cleanup-test-log-dir
+  snapshot_runner_cleanup_env
+  printf "%s\n" "${RUNNER_CLEANUP_ENV_PRESENT[RUNNER_CLEANUP_LOG_DIR]}"
+' _ "${REPO_DIR}/load-config.sh" >"${TMP_DIR}/env-snapshot.out" 2>"${TMP_DIR}/env-snapshot.err"
+snapshot_exit_code=$?
+set -e
+
+if [ "${snapshot_exit_code}" -ne 0 ]; then
+  printf 'snapshot_runner_cleanup_env should preserve named environment variables without arithmetic errors\n' >&2
+  cat "${TMP_DIR}/env-snapshot.err" >&2
+  exit 1
+fi
+
+assert_snapshot_output=$(cat "${TMP_DIR}/env-snapshot.out")
+if [ "${assert_snapshot_output}" != "1" ]; then
+  printf 'expected RUNNER_CLEANUP_ENV_PRESENT to behave as an associative array\n' >&2
+  exit 1
+fi
+
 assert_file_contains() {
   local path=$1
   local pattern=$2

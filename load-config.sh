@@ -9,6 +9,9 @@ resolve_runner_cleanup_path() {
   printf '%s/%s\n' "${dir}" "${base}"
 }
 
+declare -A RUNNER_CLEANUP_ENV_PRESENT=()
+declare -A RUNNER_CLEANUP_ENV_VALUES=()
+
 snapshot_runner_cleanup_env() {
   local var
 
