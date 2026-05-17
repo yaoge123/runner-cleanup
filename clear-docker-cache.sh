@@ -21,8 +21,9 @@ REQUIRED_DOCKER_API_VERSION=1.25
 FILTER_FLAG='label=com.gitlab.gitlab-runner.managed=true'
 
 usage() {
-  echo -e "\nUsage: $0 image-prune|prune-volumes|prune|space|help\n"
+  echo -e "\nUsage: $0 image-prune|image-age|prune-volumes|prune|space|help\n"
   echo -e "\timage-prune      Remove dangling Docker images only"
+  echo -e "\timage-age        Remove tagged Docker images unused for IMAGE_MAX_AGE_DAYS days"
   echo -e "\tprune-volumes    Remove all unused containers (both dangling and unreferenced) and volumes"
   echo -e "\tprune            Remove all unused containers (both dangling and unreferenced)"
   echo -e "\tspace            Show docker disk usage"
@@ -155,6 +156,108 @@ case "$COMMAND" in
       fi
     fi
     run_or_print env DOCKER_API_VERSION=$PRUNE_DOCKER_API_VERSION docker system prune "$VOLUMES_FLAG" -af --filter "$FILTER_FLAG"
+
+    exit 0
+    ;;
+
+  image-age)
+
+    IMAGE_MAX_AGE_DAYS=${IMAGE_MAX_AGE_DAYS:-31}
+    IMAGE_USAGE_STATE=${IMAGE_USAGE_STATE:-/var/lib/runner-cleanup/image-usage.json}
+    NOW=$(date +%s)
+
+    echo -e "\nCheck and remove stale tagged Docker images."
+    echo -e "----------------------------------------------"
+    printf 'IMAGE_MAX_AGE_DAYS=%s\n' "${IMAGE_MAX_AGE_DAYS}"
+
+    if [ "${IMAGE_MAX_AGE_DAYS}" -le 0 ]; then
+      echo -e "IMAGE_MAX_AGE_DAYS is 0 or less, skipping stale image cleanup."
+      exit 0
+    fi
+
+    if ! command -v python3 >/dev/null 2>&1; then
+      echo -e "WARN: python3 not found, skipping stale image cleanup."
+      exit 0
+    fi
+
+    if [ ! -f "${IMAGE_USAGE_STATE}" ]; then
+      echo -e "WARN: image usage state file not found: ${IMAGE_USAGE_STATE}"
+      echo -e "Skipping stale image cleanup (no usage data available)."
+      exit 0
+    fi
+
+    python3 - "$IMAGE_USAGE_STATE" "$IMAGE_MAX_AGE_DAYS" "$NOW" "$DRY_RUN" << 'PYEOF'
+import json, subprocess, sys, os
+
+state_file, max_age_days, now, dry_run = sys.argv[1], int(sys.argv[2]), int(sys.argv[3]), sys.argv[4]
+max_age_seconds = max_age_days * 86400
+cutoff = now - max_age_seconds
+
+# Load usage data
+with open(state_file) as f:
+    usage_data = json.load(f)
+
+# Build digest -> tags map from docker images
+result = subprocess.run(
+    ["docker", "images", "--no-trunc", "--format", "{{.ID}}\t{{.Repository}}:{{.Tag}}"],
+    capture_output=True, text=True, timeout=10
+)
+digest_tags = {}
+for line in result.stdout.strip().splitlines():
+    parts = line.split("\t", 1)
+    if len(parts) != 2:
+        continue
+    digest, tag = parts
+    if digest not in digest_tags:
+        digest_tags[digest] = []
+    digest_tags[digest].append(tag)
+
+# Get images currently in use by any container
+result = subprocess.run(
+    ["docker", "ps", "-a", "--format", "{{.Image}}"],
+    capture_output=True, text=True, timeout=10
+)
+in_use = set(line.strip() for line in result.stdout.strip().splitlines() if line.strip())
+
+candidates = []
+for digest, tags in digest_tags.items():
+    usage = usage_data.get(digest, {})
+    last_used = usage.get("last_used", 0)
+    count = usage.get("usage_count", 0)
+
+    # Skip: no usage data or never actually observed in use
+    if count == 0:
+        continue
+
+    # Skip: still within age threshold
+    if last_used > cutoff:
+        continue
+
+    for tag in tags:
+        # Skip: dangling image (handled by image-prune)
+        if tag.endswith(":<none>") or ":<none>" in tag:
+            continue
+        # Skip: currently in use
+        if tag in in_use:
+            continue
+        candidates.append(tag)
+
+if not candidates:
+    print("No stale tagged images found.")
+    sys.exit(0)
+
+print("Stale tagged image candidates:")
+for tag in sorted(set(candidates)):
+    print("  %s" % tag)
+
+if dry_run == "1":
+    print("\nDRY_RUN=1: candidates listed, no images removed.")
+else:
+    print("\nRemoving stale tagged images...")
+    for tag in sorted(set(candidates)):
+        subprocess.run(["docker", "rmi", tag], check=False)
+    print("Done.")
+PYEOF
 
     exit 0
     ;;

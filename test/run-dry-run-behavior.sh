@@ -116,25 +116,28 @@ run_case "${TMP_DIR}/default" "" "${DEFAULT_CALLS}"
 
 assert_file_not_contains "${DEFAULT_CALLS}" 'clean:'
 assert_file_contains "${DEFAULT_CALLS}" 'docker:1:image-prune'
+assert_file_contains "${DEFAULT_CALLS}" 'docker:1:image-age'
 assert_file_contains "${DEFAULT_CALLS}" 'docker:1:default'
 assert_file_contains "${DEFAULT_CALLS}" 'local:1'
 assert_file_not_contains "${DEFAULT_CALLS}" 'unset'
-assert_file_equals "${DEFAULT_CALLS}" $'docker:1:image-prune\ndocker:1:default\nlocal:1'
+assert_file_equals "${DEFAULT_CALLS}" $'docker:1:image-prune\ndocker:1:image-age\ndocker:1:default\nlocal:1'
 
 REAL_CALLS="${TMP_DIR}/real.calls"
 run_case "${TMP_DIR}/real" '0' "${REAL_CALLS}"
 
 assert_file_not_contains "${REAL_CALLS}" 'clean:'
 assert_file_contains "${REAL_CALLS}" 'docker:0:image-prune'
+assert_file_contains "${REAL_CALLS}" 'docker:0:image-age'
 assert_file_contains "${REAL_CALLS}" 'docker:0:default'
 assert_file_contains "${REAL_CALLS}" 'local:0'
-assert_file_equals "${REAL_CALLS}" $'docker:0:image-prune\ndocker:0:default\nlocal:0'
+assert_file_equals "${REAL_CALLS}" $'docker:0:image-prune\ndocker:0:image-age\ndocker:0:default\nlocal:0'
 
 IMAGE_ONLY_CALLS="${TMP_DIR}/image-only.calls"
 run_case "${TMP_DIR}/image-only" '0' "${IMAGE_ONLY_CALLS}" '0'
 
 assert_file_not_contains "${IMAGE_ONLY_CALLS}" 'clean:'
 assert_file_contains "${IMAGE_ONLY_CALLS}" 'docker:0:image-prune'
+assert_file_contains "${IMAGE_ONLY_CALLS}" 'docker:0:image-age'
 assert_file_not_contains "${IMAGE_ONLY_CALLS}" 'docker:0:default'
 assert_file_contains "${IMAGE_ONLY_CALLS}" 'local:0'
-assert_file_equals "${IMAGE_ONLY_CALLS}" $'docker:0:image-prune\nlocal:0'
+assert_file_equals "${IMAGE_ONLY_CALLS}" $'docker:0:image-prune\ndocker:0:image-age\nlocal:0'

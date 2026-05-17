@@ -6,7 +6,8 @@
 
 ## 功能概览
 
-- 增加一个保守的镜像清理层，只删除 dangling Docker 镜像。
+- 增加一个保守的镜像清理层，删除 dangling Docker 镜像和长期未使用的 tagged 镜像。
+- 可选地删除超过 `IMAGE_MAX_AGE_DAYS` 天（默认 31 天）未被 CI job 使用过的 tagged Docker 镜像。需要镜像使用追踪器运行。
 - 执行 GitLab Runner 管理的 Docker 容器与卷清理。
 - 扫描并清理主机上 `runner-*` 目录下的本地 Runner 缓存。
 
@@ -14,13 +15,13 @@
 
 `run.sh` 可以驱动三层彼此独立的清理逻辑：
 
-- `ENABLE_IMAGE_CLEANUP=1`：通过 `docker image prune -f` 执行只针对 dangling image 的镜像清理。
+- `ENABLE_IMAGE_CLEANUP=1`：通过 `docker image prune -f` 执行只针对 dangling image 的镜像清理，然后通过 `clear-docker-cache.sh image-age` 清理过期 tagged 镜像（仅当 `IMAGE_MAX_AGE_DAYS > 0` 时）。
 - `ENABLE_DOCKER_CACHE_CLEANUP=1`：执行 `clear-docker-cache.sh` 清理 Runner 管理的 Docker 垃圾。
 - `ENABLE_LOCAL_CACHE_CLEANUP=1`：执行 `clear-runner-local-cache.sh` 清理主机上的 `runner-*` 缓存/工作区数据。
 
 Docker 侧清理与主机本地缓存清理不是一回事：
 
-- 镜像清理层只针对 dangling Docker image（`<none>:<none>`），不会删除 `ubuntu:20.04` 或 `node:18` 这类带 tag 的镜像。
+- 镜像清理层针对 dangling Docker image（`<none>:<none>`）和超过 `IMAGE_MAX_AGE_DAYS` 天未被 CI job 使用过的 tagged 镜像。不会删除正在被容器使用的镜像或在窗口内有 CI 使用记录的镜像。镜像使用数据由独立的 `docker-image-tracker` systemd 服务收集。
 - Docker cache 清理针对 GitLab Runner 管理的 Docker 对象，例如已停止容器和未使用卷。
 - 本地缓存清理针对主机缓存目录里的文件，尤其是 `runner-*` 工作区和 `*.tmp` 目录。
 
@@ -32,10 +33,33 @@ Docker 侧清理与主机本地缓存清理不是一回事：
 - Docker 清理层需要可访问 Docker CLI。`clear-docker-cache.sh` 要求 Docker client 和 daemon API 都不低于 `1.25`。
 - 主机本地缓存扫描需要 `python3`。
 - GNU 风格基础工具，包括 `awk`、`find`、`sort`、`stat -c`，以及 `realpath -m` 或 `readlink -m` 二者之一。
+- 主机上需要运行 `docker-image-tracker` systemd 服务（已包含）。该服务监听 Docker 容器启动事件，记录哪些镜像被 CI job 使用过。缺少该服务时，`image-age` 清理会输出警告并跳过。
 
 Docker API 低于 `1.25` 不作为受支持的兼容目标。如果某台 runner host 的 Docker 版本低到这种程度，应当为该主机关闭 `ENABLE_IMAGE_CLEANUP` 和 `ENABLE_DOCKER_CACHE_CLEANUP`，或先升级 Docker 再启用 Docker 清理。本地主机缓存清理在满足自身依赖时仍可独立使用。
 
 如果只手工使用旧的 `clean.sh` 辅助脚本，只需要 Docker CLI 和标准 shell 工具。
+
+## 镜像使用追踪器
+
+`track-docker-image-usage.py` 是一个 Python 守护进程，订阅 GitLab Runner 管理容器的 Docker `container:start` 事件，记录 CI job 使用了哪些镜像摘要。
+
+### 工作原理
+
+1. 实时监听 `docker events --filter event=start --filter type=container --filter label=com.gitlab.gitlab-runner.managed=true`。
+2. 每次 `container:start` 事件提供镜像摘要（sha256）、Unix 时间戳、CI job ID 和项目路径。
+3. 以摘要为键记录到 `/var/lib/runner-cleanup/image-usage.json`，去重存储，文件不会无限增长。
+4. `image-age` 清理读取该数据，在清理时通过 `docker images --no-trunc` 将摘要映射为镜像 tag，识别出在 `IMAGE_MAX_AGE_DAYS` 天内未被使用的 tagged 镜像。
+
+### 部署
+
+```bash
+cp systemd/docker-image-tracker.service /etc/systemd/system/
+# 在单元文件中调整 ExecStart 路径以匹配你的安装目录
+systemctl daemon-reload
+systemctl enable --now docker-image-tracker
+```
+
+追踪器需要运行至少 `IMAGE_MAX_AGE_DAYS` 天后，`image-age` 清理才能做出准确判断。在那之前，没有使用记录的镜像会被跳过。
 
 ## 本地缓存模型
 
@@ -51,6 +75,8 @@ Docker API 低于 `1.25` 不作为受支持的兼容目标。如果某台 runner
 - `clean.sh`：旧的按仓库删除旧镜像辅助脚本；`run.sh` 不再调用它。
 - `clear-docker-cache.sh`：Runner 管理的 Docker 容器/卷清理。
 - `clear-runner-local-cache.sh`：主机侧 Runner 本地缓存扫描与清理。
+- `track-docker-image-usage.py`：Docker 镜像使用追踪器，记录哪些镜像被 CI job 使用过。
+- `systemd/docker-image-tracker.service`：镜像使用追踪器的 systemd 单元文件。
 - `logrotate/runner-cleanup`：`/var/log/runner-cleanup/runner-cleanup.log` 的示例 logrotate 策略。
 - `test/run-logging-smoke.sh`：内建文件日志的冒烟测试。
 - `test/run-logging-behavior.sh`：日志路径、配置加载与退出日志行为验证。
@@ -91,7 +117,8 @@ bash run.sh
 | 变量 | 默认值 | 使用位置 | 何时调整 |
 | --- | --- | --- | --- |
 | `KEEP_MAX_IMAGES` | `run.sh` 中为 `5` | 仅供手工调用 `clean.sh` 时使用 | 旧的按仓库保留镜像设置；`run.sh` 不再使用它。 |
-| `ENABLE_IMAGE_CLEANUP` | `run.sh` 中为 `1` | `run.sh` -> `clear-docker-cache.sh image-prune` | 如果不希望删除 dangling Docker 镜像，设为 `0`；这一层不会删除 tagged image。 |
+| `ENABLE_IMAGE_CLEANUP` | `run.sh` 中为 `1` | `run.sh` -> `clear-docker-cache.sh image-prune` 和 `image-age` | 如果不希望删除 dangling 或过期 tagged Docker 镜像，设为 `0`。 |
+| `IMAGE_MAX_AGE_DAYS` | `run.sh` 中为 `31` | `run.sh` -> `clear-docker-cache.sh image-age` | tagged 镜像的过期阈值（仅在 `ENABLE_IMAGE_CLEANUP=1` 时生效）。设为 `0` 可关闭。需要镜像使用追踪器运行。 |
 | `ENABLE_DOCKER_CACHE_CLEANUP` | `run.sh` 中为 `1` | `run.sh` -> `clear-docker-cache.sh` | 如果不希望清理 Runner 管理的 Docker 对象，设为 `0`。 |
 | `ENABLE_LOCAL_CACHE_CLEANUP` | `run.sh` 中为 `1` | `run.sh` -> `clear-runner-local-cache.sh` | 只有在这台主机完全不需要本地缓存清理时才建议关闭。 |
 | `RUNNER_CACHE_DIR` | `/cache` | `clear-runner-local-cache.sh` | 仅在 Runner 本地缓存不在默认允许路径中时调整。 |
@@ -152,8 +179,9 @@ ENABLE_LOCAL_CACHE_CLEANUP=1
 `run.sh` 按如下顺序执行清理：
 
 1. `clear-docker-cache.sh image-prune`
-2. `clear-docker-cache.sh`
-3. `clear-runner-local-cache.sh`
+2. `clear-docker-cache.sh image-age`（仅当 `IMAGE_MAX_AGE_DAYS > 0` 时）
+3. `clear-docker-cache.sh`
+4. `clear-runner-local-cache.sh`
 
 三层清理都可以独立启用或关闭。
 
@@ -165,13 +193,15 @@ ENABLE_LOCAL_CACHE_CLEANUP=1
 KEEP_MAX_IMAGES=5
 ENABLE_IMAGE_CLEANUP=1
 ENABLE_DOCKER_CACHE_CLEANUP=1
+IMAGE_MAX_AGE_DAYS=31
 ```
 
 - `KEEP_MAX_IMAGES`：旧配置，仅供手工调用 `clean.sh` 时使用。`run.sh` 不再使用它。
-- `ENABLE_IMAGE_CLEANUP`：为 `1` 时执行 `clear-docker-cache.sh image-prune`；为 `0` 时完全跳过 dangling image 清理。
-- `ENABLE_DOCKER_CACHE_CLEANUP`：为 `1` 时执行 `clear-docker-cache.sh`；为 `0` 时跳过 Runner 管理的 Docker 容器/卷清理。
+- `ENABLE_IMAGE_CLEANUP`：为 `1` 时执行 `clear-docker-cache.sh image-prune` 和 `image-age`（前提是 `IMAGE_MAX_AGE_DAYS > 0`）；为 `0` 时同时跳过这两步。
+- `ENABLE_DOCKER_CACHE_CLEANUP`：为 `1` 时执行 `clear-docker-cache.sh`；为 `0` 时跳过。
+- `IMAGE_MAX_AGE_DAYS`：大于 `0` 且 `ENABLE_IMAGE_CLEANUP=1` 时，在 image-prune 之后执行 `clear-docker-cache.sh image-age` 清理过期 tagged 镜像。需要镜像使用追踪器运行。
 
-`ENABLE_IMAGE_CLEANUP` 这一层刻意保持保守：它只删除 dangling image，语义等价于 `docker image prune -f`。这一层不会执行 `docker image prune -a`、`docker system prune` 或 `docker system prune -a`，也不会删除 tagged image。
+`ENABLE_IMAGE_CLEANUP` 这一层刻意保持保守：它只删除 dangling image，语义等价于 `docker image prune -f`，以及超过 `IMAGE_MAX_AGE_DAYS` 天未被 CI job 使用的 tagged 镜像。这一层不会执行 `docker image prune -a`、`docker system prune` 或 `docker system prune -a`，也不会删除正在使用中或有近期 CI 使用记录的 tagged image。
 
 `ENABLE_DOCKER_CACHE_CLEANUP` 是独立的另一层，会保留 `clear-docker-cache.sh` 中原有的 Runner 管理 Docker 垃圾清理行为。启用时，这一层仍会执行带 GitLab Runner managed label 过滤条件的 Docker system prune 命令。
 
@@ -179,7 +209,7 @@ ENABLE_DOCKER_CACHE_CLEANUP=1
 
 - 这是旧的辅助脚本，`run.sh` 不会调用它。
 - 通过 `docker images --format '{{.Repository}}'` 枚举 Docker 仓库。
-- 是按“每个仓库”处理，而不是全局统一保留。
+- 是按"每个仓库"处理，而不是全局统一保留。
 - 会删除较老的镜像 ID，并为每个仓库名保留最新的 `KEEP_MAX_IMAGES` 个唯一镜像 ID。
 - 使用 `docker rmi -f`，因此这一层比本地缓存清理更激进。
 
@@ -190,12 +220,14 @@ ENABLE_DOCKER_CACHE_CLEANUP=1
 ```bash
 bash clear-docker-cache.sh prune-volumes
 bash clear-docker-cache.sh image-prune
+bash clear-docker-cache.sh image-age
 bash clear-docker-cache.sh prune
 bash clear-docker-cache.sh space
 bash clear-docker-cache.sh help
 ```
 
 - `image-prune`：只删除 dangling Docker image，使用 `docker image prune -f`；不会删除 tagged image。
+- `image-age`：删除超过 `IMAGE_MAX_AGE_DAYS` 天未被 CI job 使用过的 tagged Docker 镜像。读取追踪器产生的 `/var/lib/runner-cleanup/image-usage.json`。不会删除正在被任何容器使用的镜像、没有使用记录的镜像、或 dangling 镜像（由 image-prune 处理）。
 - `prune-volumes`：删除未使用的 Runner 管理容器和卷。
 - `prune`：仅删除未使用的 Runner 管理容器。
 - `space`：显示 Docker 磁盘占用。
@@ -273,7 +305,7 @@ TOP_N_LARGEST=10
 - 正常情况下，文件日志由 `run.sh` 处理，cron 不需要额外做 shell 重定向。
 - 仓库中提供了 `logrotate` 示例配置：`logrotate/runner-cleanup`。
 - 请通过系统标准的 logrotate 配置路径安装示例策略，避免清理日志无限增长。
-- `DRY_RUN=1` 现在会保护三层清理；`clean.sh` 和 `clear-docker-cache.sh` 会打印“本来会执行的 Docker 命令”，而不会真正删除。
+- `DRY_RUN=1` 现在会保护三层清理；`clean.sh` 和 `clear-docker-cache.sh` 会打印"本来会执行的 Docker 命令"，而不会真正删除。
 - `run.sh` 现在会在启动日志里打印 `DRY_RUN` 和三层开关状态，便于直接从 cron 日志判断这次到底是观察模式还是实删模式。
 - 删除工作区数据后，后续 Job 可能因为重新恢复缓存或重新构建而变慢。
 - 删除 archive 缓存（`cache.zip`）默认开启（`ENABLE_ARCHIVE_CLEANUP=1`）。只删除 mtime 超过 `ARCHIVE_MAX_AGE_DAYS`（默认 30 天）的归档。删除归档会导致对应 cache key 的真正 CI 缓存未命中。

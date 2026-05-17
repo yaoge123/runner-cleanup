@@ -57,15 +57,21 @@ ENABLE_DOCKER_CACHE_CLEANUP=${ENABLE_DOCKER_CACHE_CLEANUP:-1}
 ENABLE_LOCAL_CACHE_CLEANUP=${ENABLE_LOCAL_CACHE_CLEANUP:-1}
 DRY_RUN=${DRY_RUN:-1}
 
+IMAGE_MAX_AGE_DAYS=${IMAGE_MAX_AGE_DAYS:-31}
+
 export DRY_RUN
 
 printf 'DRY_RUN=%s\n' "${DRY_RUN}"
 printf 'ENABLE_IMAGE_CLEANUP=%s\n' "${ENABLE_IMAGE_CLEANUP}"
 printf 'ENABLE_DOCKER_CACHE_CLEANUP=%s\n' "${ENABLE_DOCKER_CACHE_CLEANUP}"
 printf 'ENABLE_LOCAL_CACHE_CLEANUP=%s\n' "${ENABLE_LOCAL_CACHE_CLEANUP}"
+printf 'IMAGE_MAX_AGE_DAYS=%s\n' "${IMAGE_MAX_AGE_DAYS}"
 
 if [ "${ENABLE_IMAGE_CLEANUP}" = "1" ]; then
   bash "${SCRIPT_DIR}/clear-docker-cache.sh" image-prune
+  if [ "${IMAGE_MAX_AGE_DAYS:-0}" -gt 0 ]; then
+    bash "${SCRIPT_DIR}/clear-docker-cache.sh" image-age
+  fi
 fi
 
 if [ "${ENABLE_DOCKER_CACHE_CLEANUP}" = "1" ]; then

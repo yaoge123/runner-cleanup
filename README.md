@@ -6,7 +6,8 @@ Shell scripts for keeping GitLab Runner hosts clean without touching GitLab or r
 
 ## What it does
 
-- Adds a conservative image cleanup layer that removes dangling Docker images only.
+- Adds a conservative image cleanup layer that removes dangling Docker images and stale tagged images.
+- Optionally removes stale tagged Docker images that have not been used by CI jobs for `IMAGE_MAX_AGE_DAYS` days (31 by default). Requires the image usage tracker.
 - Runs GitLab Runner Docker cleanup for unused runner-managed containers and volumes.
 - Scans and cleans host-based runner local cache under `runner-*` directories.
 
@@ -14,13 +15,13 @@ Shell scripts for keeping GitLab Runner hosts clean without touching GitLab or r
 
 `run.sh` can drive three independent cleanup layers:
 
-- `ENABLE_IMAGE_CLEANUP=1`: run dangling-only Docker image cleanup with `docker image prune -f`.
+- `ENABLE_IMAGE_CLEANUP=1`: run dangling-only Docker image cleanup with `docker image prune -f`, then run stale tagged image cleanup via `clear-docker-cache.sh image-age` (only when `IMAGE_MAX_AGE_DAYS > 0`).
 - `ENABLE_DOCKER_CACHE_CLEANUP=1`: run `clear-docker-cache.sh` for runner-managed Docker garbage.
 - `ENABLE_LOCAL_CACHE_CLEANUP=1`: run `clear-runner-local-cache.sh` for host-based `runner-*` cache/workspace data.
 
 The Docker-facing cleanup and the host local-cache cleanup are different:
 
-- The image cleanup layer targets only dangling Docker images (`<none>:<none>`). It does not remove tagged images such as `ubuntu:20.04` or `node:18`.
+- The image cleanup layer targets dangling Docker images (`<none>:<none>`) and stale tagged images that have not been used by CI jobs within `IMAGE_MAX_AGE_DAYS` days. It does not remove tagged images that are currently in use by any container or that have recorded CI usage within the window. Image usage data is collected by a separate `docker-image-tracker` systemd service.
 - Docker cache cleanup targets Docker objects managed by GitLab Runner, such as stopped containers and unused volumes.
 - Local cache cleanup targets files under the runner cache directory on the host, especially `runner-*` workspaces and `*.tmp` directories.
 
@@ -32,10 +33,33 @@ These scripts are intended for Linux GitLab Runner hosts with:
 - Docker CLI access for Docker cleanup layers. `clear-docker-cache.sh` requires Docker client and daemon API `1.25` or newer.
 - `python3` for host local-cache scanning.
 - GNU-style userland tools used by the scripts, including `awk`, `find`, `sort`, `stat -c`, and either `realpath -m` or `readlink -m`.
+- `docker-image-tracker` systemd service (included) running on the host. This service listens to Docker container start events to record which images are used by CI jobs. Without it, `image-age` cleanup will skip with a warning.
 
 Docker API versions older than `1.25` are not treated as a supported compatibility target. If a runner host is that old, disable `ENABLE_IMAGE_CLEANUP` and `ENABLE_DOCKER_CACHE_CLEANUP` for that host or upgrade Docker before enabling Docker cleanup. Host local-cache cleanup can still be used independently when its own requirements are met.
 
 If only the legacy `clean.sh` helper is used manually, Docker CLI access plus the standard shell tools are sufficient.
+
+## Image Usage Tracker
+
+`track-docker-image-usage.py` is a Python daemon that subscribes to Docker `container:start` events from GitLab Runner managed containers and records which image digests have been used by CI jobs.
+
+### How it works
+
+1. Listens to `docker events --filter event=start --filter type=container --filter label=com.gitlab.gitlab-runner.managed=true` in real time.
+2. Each `container:start` event provides an image digest (sha256), a Unix timestamp, the CI job ID, and the project path.
+3. Records these per-digest to `/var/lib/runner-cleanup/image-usage.json`, deduplicating by digest key so the file does not grow without bound.
+4. The `image-age` cleanup reads this data, maps digests to image tags via `docker images --no-trunc` at cleanup time, and identifies tagged images that have not been used within `IMAGE_MAX_AGE_DAYS`.
+
+### Deployment
+
+```bash
+cp systemd/docker-image-tracker.service /etc/systemd/system/
+# Adjust the ExecStart path in the unit file to match your installation directory
+systemctl daemon-reload
+systemctl enable --now docker-image-tracker
+```
+
+The tracker must be running for at least `IMAGE_MAX_AGE_DAYS` before the `image-age` cleanup can make accurate decisions. Until then, images with no recorded usage are skipped.
 
 ## Local cache model
 
@@ -51,6 +75,8 @@ The local cache cleanup script treats data in three classes:
 - `clean.sh`: legacy per-repository old Docker image cleanup helper; not used by `run.sh`.
 - `clear-docker-cache.sh`: runner-managed Docker container and volume cleanup.
 - `clear-runner-local-cache.sh`: host-based runner local cache scan and cleanup.
+- `track-docker-image-usage.py`: Docker image usage tracker that records which images are used by CI jobs.
+- `systemd/docker-image-tracker.service`: systemd unit file for the image usage tracker.
 - `logrotate/runner-cleanup`: sample logrotate policy for `/var/log/runner-cleanup/runner-cleanup.log`.
 - `test/run-logging-smoke.sh`: smoke test for built-in file logging.
 - `test/run-logging-behavior.sh`: verifies log path selection, config loading, and exit logging behavior.
@@ -91,7 +117,8 @@ The settings below are the ones operators are expected to change. They come from
 | Variable | Default | Used by | When to change |
 | --- | --- | --- | --- |
 | `KEEP_MAX_IMAGES` | `5` in `run.sh` | `clean.sh` manual use only | Legacy per-repository image retention setting; `run.sh` no longer uses it. |
-| `ENABLE_IMAGE_CLEANUP` | `1` in `run.sh` | `run.sh` -> `clear-docker-cache.sh image-prune` | Set to `0` if you do not want dangling Docker images removed. Tagged images are not removed by this layer. |
+| `ENABLE_IMAGE_CLEANUP` | `1` in `run.sh` | `run.sh` -> `clear-docker-cache.sh image-prune` and `image-age` | Set to `0` if you do not want dangling or stale tagged Docker images removed. |
+| `IMAGE_MAX_AGE_DAYS` | `31` in `run.sh` | `run.sh` -> `clear-docker-cache.sh image-age` | Stale threshold for tagged image cleanup (only when `ENABLE_IMAGE_CLEANUP=1`). Set to `0` to disable. Requires the image usage tracker to be running. |
 | `ENABLE_DOCKER_CACHE_CLEANUP` | `1` in `run.sh` | `run.sh` -> `clear-docker-cache.sh` | Set to `0` if you do not want runner-managed Docker objects pruned. |
 | `ENABLE_LOCAL_CACHE_CLEANUP` | `1` in `run.sh` | `run.sh` -> `clear-runner-local-cache.sh` | Disable only if this host should skip local cache cleanup entirely. |
 | `RUNNER_CACHE_DIR` | `/cache` | `clear-runner-local-cache.sh` | Change only when the runner host stores local cache under another allowlisted path. |
@@ -152,8 +179,9 @@ ENABLE_LOCAL_CACHE_CLEANUP=1
 `run.sh` executes cleanup in this order:
 
 1. `clear-docker-cache.sh image-prune`
-2. `clear-docker-cache.sh`
-3. `clear-runner-local-cache.sh`
+2. `clear-docker-cache.sh image-age` (only when `IMAGE_MAX_AGE_DAYS > 0`)
+3. `clear-docker-cache.sh`
+4. `clear-runner-local-cache.sh`
 
 Each layer can be enabled or disabled independently.
 
@@ -165,13 +193,15 @@ Each layer can be enabled or disabled independently.
 KEEP_MAX_IMAGES=5
 ENABLE_IMAGE_CLEANUP=1
 ENABLE_DOCKER_CACHE_CLEANUP=1
+IMAGE_MAX_AGE_DAYS=31
 ```
 
 - `KEEP_MAX_IMAGES`: legacy setting for manual `clean.sh` use only. `run.sh` does not use it.
-- `ENABLE_IMAGE_CLEANUP`: when `1`, run `clear-docker-cache.sh image-prune`; when `0`, skip dangling-image cleanup completely.
-- `ENABLE_DOCKER_CACHE_CLEANUP`: when `1`, run `clear-docker-cache.sh`; when `0`, skip runner-managed Docker container/volume cleanup.
+- `ENABLE_IMAGE_CLEANUP`: when `1`, run `clear-docker-cache.sh image-prune` and `image-age` (if `IMAGE_MAX_AGE_DAYS > 0`); when `0`, skip both.
+- `ENABLE_DOCKER_CACHE_CLEANUP`: when `1`, run `clear-docker-cache.sh`; when `0`, skip.
+- `IMAGE_MAX_AGE_DAYS`: when `> 0` and `ENABLE_IMAGE_CLEANUP=1`, run `clear-docker-cache.sh image-age` after image-prune to remove stale tagged images. Requires the image usage tracker.
 
-The `ENABLE_IMAGE_CLEANUP` layer is intentionally conservative: it only removes dangling images, equivalent to `docker image prune -f`. This layer never runs `docker image prune -a`, `docker system prune`, or `docker system prune -a`, and it does not remove tagged images.
+The `ENABLE_IMAGE_CLEANUP` layer is intentionally conservative: it only removes dangling images, equivalent to `docker image prune -f`, and stale tagged images that have not been used by CI jobs for `IMAGE_MAX_AGE_DAYS` days. This layer never runs `docker image prune -a`, `docker system prune`, or `docker system prune -a`, and it does not remove tagged images currently in use or with recent CI usage.
 
 The `ENABLE_DOCKER_CACHE_CLEANUP` layer is separate and keeps the existing runner-managed Docker garbage cleanup behavior in `clear-docker-cache.sh`. When enabled, that layer still invokes Docker system prune commands filtered by the GitLab Runner managed label.
 
@@ -190,12 +220,14 @@ Supported commands:
 ```bash
 bash clear-docker-cache.sh prune-volumes
 bash clear-docker-cache.sh image-prune
+bash clear-docker-cache.sh image-age
 bash clear-docker-cache.sh prune
 bash clear-docker-cache.sh space
 bash clear-docker-cache.sh help
 ```
 
 - `image-prune`: remove dangling Docker images only, using `docker image prune -f`; tagged images are never removed.
+- `image-age`: remove tagged Docker images that have not been used by CI jobs for `IMAGE_MAX_AGE_DAYS` days. Reads usage data from `/var/lib/runner-cleanup/image-usage.json` (produced by the tracker). Never removes images currently in use by any container, images with zero recorded usage, or dangling images (handled by image-prune).
 - `prune-volumes`: remove unused runner-managed containers and volumes.
 - `prune`: remove unused runner-managed containers only.
 - `space`: show Docker disk usage.

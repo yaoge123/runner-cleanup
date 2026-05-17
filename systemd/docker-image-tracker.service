@@ -5,7 +5,7 @@ Requires=docker.service
 
 [Service]
 Type=simple
-ExecStart=/usr/bin/python3 /opt/runner-cleanup/track-docker-image-usage.py --state /var/lib/runner-cleanup/image-usage.json --interval 300
+ExecStart=/usr/bin/python3 /path/to/runner-cleanup/track-docker-image-usage.py --state /var/lib/runner-cleanup/image-usage.json
 Restart=always
 RestartSec=10
 StandardOutput=journal
